@@ -9,7 +9,7 @@ This module allows to launch 'boundles' of snippets on Spark 3, where each bound
 ## Getting started
 
 
-## a. Initialize the environment
+### a. Initialize the environment
 
 The very first time you use the project you need to install it. 
 
@@ -31,13 +31,13 @@ qspark spark3/dataset-gen.sc # this will generate .parquet, .delta, ... datasets
 
 3. Make sure `spark-shell` is in your `PATH`
 
-## b. Launch a bundle
+### b. Launch a bundle
 
 ```bash
 qspark <bundle.sc> # this will launch the snippet with the settings defined after '// Arguments: ' prefixed line
 ```
 
-## c. Write your own bundle
+### c. Write your own bundle
 
 A very simple bundle looks like this:
 
@@ -49,3 +49,21 @@ val df = spark.read.option("delimiter","^").option("header","true").csv("dataset
 ```
 
 Each bundle contains a `// Arguments: ` section with the parameters passed to Spark shell to run the snippet.
+
+## Use cases
+
+Basic:
+- Spill
+- TODO Simple merge
+- Simple merge in streaming query
+
+Read Amplification:
+- Z-Order
+- DFP
+- 
+
+Write Amplification:
+- ...
+
+Misc:
+- Thread Contention
