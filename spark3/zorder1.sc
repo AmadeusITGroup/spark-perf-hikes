@@ -42,7 +42,7 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
 showMaxMinStats(inputDir, "country_code", 0)
 
 spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 4 * 1024 * 1024L)
-DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code").show(10, false)
+DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code") 
 
 // show that files have data that is well organized now
 showMaxMinStats(inputDir, "country_code", 1)
