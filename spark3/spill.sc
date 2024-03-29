@@ -32,6 +32,8 @@ spillListener.reset()
 
 // Create a large partition by mismanaging shuffle partitions
 spark.conf.set("spark.sql.shuffle.partitions", 1)
+// Disable AQE to have a single job
+spark.conf.set("spark.sql.adaptive.enabled", false)
 
 // The location of our non-skewed set of transactions
 val trxPath = s"${System.getenv("SSCE_PATH")}/datasets/optd_por_public_all.csv"
