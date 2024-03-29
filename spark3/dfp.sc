@@ -4,16 +4,28 @@ import java.util.UUID
 import io.delta.tables.DeltaTable
 
 val tmpPath = "/tmp/tmpPath/" + UUID.randomUUID()
-val inputDir = tmpPath + "/input"
-
-//val spark: SparkSession = ???
-//val sc = spark.sparkContext
+val probeDir = tmpPath + "/input"
+val buildDir = tmpPath + "/employee"
 
 sc.setJobDescription("Read input CSV")
 val inputCsv = spark.read.option("delimiter","^").option("header","true").csv(s"${System.getenv("SSCE_PATH")}/datasets/optd_por_public_all.csv")
-sc.setJobDescription("Format input CSV into delta (multiple files)")
-inputCsv.repartition(4).write.format("delta").save(inputDir)
-val deltaTable = DeltaTable.forPath(inputDir)
+sc.setJobDescription("Format input CSV into delta (probe side)")
+inputCsv.repartition(4).write.format("delta").save(probeDir)
+
+case class Employee(name: String, role: String, residence: String)
+val employeesData = Seq(
+  Employee("Thierry", "Software Engineer", "FR"),
+  Employee("Mohammed", "DevOps", "FR"),
+  Employee("Gene", "Intern", "FR"),
+  Employee("Mau", "Intern", "FR"),
+  Employee("Mathieu", "Software Engineer", "FR"),
+  Employee("Thomas", "Intern", "FR")
+)
+sc.setJobDescription("Create build table")
+employeesData.toDF.write.format("delta").save(buildDir)
+
+val deltaTable = DeltaTable.forPath(probeDir)
+val employeeTable = DeltaTable.forPath(buildDir)
 
 def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
   // stats on parquet files added to the table
@@ -38,8 +50,27 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
   df.show(false)
 }
 
-spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 1 * 1024 * 1024L)
-DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code").show(10, false)
+// Join a 2 tables (probe and build), adding a filter in the smaller one (the build side of the join)
+def joinTables(description: String): Unit = {
+  val probe = DeltaTable.forPath(probeDir).toDF
+  val build = DeltaTable.forPath(buildDir).toDF
+  sc.setJobDescription(s"Join tables: $description")
+  probe
+  .join(build, build("residence") === probe("country_code"), "inner")
+  .where(col("role") === "Intern")
+  .count()
+}
 
-// show that files have data that is well organized now
-showMaxMinStats(inputDir, "country_code", 1)
+joinTables("before zorder")
+
+// Be sure to trigger DFP: broadcast join + table/files thresholds
+spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 10000000000)
+spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
+spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", true)
+
+// zorder table
+spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 1 * 1024 * 1024L)
+DeltaTable.forPath(probeDir).optimize().executeZOrderBy("country_code")
+
+joinTables("after zorder")
