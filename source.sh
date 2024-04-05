@@ -1,8 +1,19 @@
 spark_sandbox_tmp_path=/tmp/amadeus-spark-lab/
 
+function spark-local-check-version() {
+  local expected_version=$1
+  local spark_path=$(readlink -e $(which spark-shell))
+  if [[ "${spark_path}" == *"$expected_version"* ]] ;then
+    echo "Version of spark seems OK ($spark_path vs required $expected_version)"
+  else
+    echo "WARNING: version of spark ($spark_path) seems not to match required version $expected_version!!!!"
+  fi
+}
 function spark-run-local() {
   local script="$1"
   local args=$(cat $script | sed -n 's#// Local: ##gp')
+  local version=$(cat $script | sed -n 's#// Spark: ##gp')
+  spark-local-check-version $version
   cat $script - | spark-shell $args
 }
 
