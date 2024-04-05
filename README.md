@@ -52,6 +52,7 @@ spark-run-local <snippet.sc>
 Each snippet is supposed to have the same structure of the following example:
 
 ```scala
+// Spark: <version of spark this snippet is intended to be used with>
 // Local: <spark shell extra options when used locally, e.g. --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] >
 // Databricks: <placeholder, unused for now>
 
