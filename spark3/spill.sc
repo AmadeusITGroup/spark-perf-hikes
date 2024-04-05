@@ -2,7 +2,6 @@
 // Local: --executor-memory 1G --driver-memory 1G --executor-cores 1
 // Databricks: ...
 
-
 // COMMAND ----------
 
 /*
