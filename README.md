@@ -35,7 +35,7 @@ spark-init-datasets-databricks
 spark-run-local <snippet.sc>
 ```
 
-## Existing snippets
+Some existing snippets:
 
 - Spill
 - Thread Contention
@@ -46,8 +46,29 @@ spark-run-local <snippet.sc>
 - Deletion vectors
 - ...
 
+### c. Write your snippet
 
-## Snippet structure
+#### IDE setup
+
+To write a snippet we encourage you to create a `build.sbt` file, and load the project as a scala project:
+
+```scala
+val sparkVersion         = "3.4.1"
+val deps = Seq(
+  "org.apache.spark" %% "spark-core" % sparkVersion,
+  "org.apache.spark" %% "spark-sql" % sparkVersion,
+  "org.apache.spark" %% "spark-avro" % sparkVersion,
+  "io.delta" %% "delta-core" % "2.4.0"
+)
+lazy val root = (project in file("."))
+  .settings(
+    name := "ssce-spark-sandbox",
+    scalaVersion := "2.12.13",
+    libraryDependencies := deps
+  )
+```
+
+#### Snippet structure
 
 Each snippet is supposed to have the same structure of the following example:
 

@@ -3,6 +3,7 @@ datasets/
 metastore_db/
 derby.log
 project
+build.sbt
 .bsp
 .idea
 target/
