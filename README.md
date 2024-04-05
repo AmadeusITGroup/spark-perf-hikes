@@ -23,9 +23,9 @@ source $SSCE_PATH/source.sh # to define the aliases
 2. Then set up some sample datasets:
 
 ```bash
-mkdir -p $SSCE_PATH/datasets/
-curl https://raw.githubusercontent.com/opentraveldata/opentraveldata/master/opentraveldata/optd_por_public_all.csv > datasets/optd_por_public_all.csv
-qspark spark3/dataset-gen.sc # this will generate .parquet, .delta, ... datasets
+export TMP_PATH=/tmp/amadeus-spark-lab/datasets/
+mkdir -p $TMP_PATH
+curl https://raw.githubusercontent.com/opentraveldata/opentraveldata/master/opentraveldata/optd_por_public_all.csv > ${TMP_PATH}/optd_por_public_all.csv
 ```
 
 3. Make sure `spark-shell` is in your `PATH`
@@ -33,7 +33,7 @@ qspark spark3/dataset-gen.sc # this will generate .parquet, .delta, ... datasets
 ### b. Launch a bundle
 
 ```bash
-qspark <bundle.sc> # this will launch the snippet with the settings defined after '// Arguments: ' prefixed line
+spark-run-local <bundle.sc> # this will launch the snippet with the settings defined after '// Arguments: ' prefixed line
 ```
 
 ### c. Write your own bundle

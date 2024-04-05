@@ -1,4 +1,4 @@
-// Arguments: --executor-memory 1G --driver-memory 1G --executor-cores 1
+// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1
 sc.setJobDescription("Spill Listener")
 
 // See https://github.com/apache/spark/blob/master/core/src/main/scala/org/apache/spark/TestUtils.scala
@@ -35,7 +35,7 @@ spark.conf.set("spark.sql.shuffle.partitions", 1)
 spark.conf.set("spark.sql.adaptive.enabled", false)
 
 // The location of our non-skewed set of transactions
-val trxPath = s"${System.getenv("SSCE_PATH")}/datasets/optd_por_public_all.csv"
+val trxPath = "/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv"
 def df() = spark.read.option("delimiter","^").option("header","true").csv(trxPath)
 val dfs = (1 to 100).map(_ => df()).reduce(_ union _)
 
