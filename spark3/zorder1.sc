@@ -1,16 +1,16 @@
-// Arguments: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-core_2.12:2.4.0,org.apache.spark:spark-avro_2.12:3.3.2 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-core_2.12:2.4.0,org.apache.spark:spark-avro_2.12:3.3.2 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 
 import java.util.UUID
 import io.delta.tables.DeltaTable
 
-val tmpPath = "/tmp/tmpPath/" + UUID.randomUUID()
+val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 val inputDir = tmpPath + "/input"
 
 //val spark: SparkSession = ???
 //val sc = spark.sparkContext
 
 sc.setJobDescription("Read input CSV")
-val inputCsv = spark.read.option("delimiter","^").option("header","true").csv(s"${System.getenv("SSCE_PATH")}/datasets/optd_por_public_all.csv")
+val inputCsv = spark.read.option("delimiter","^").option("header","true").csv("/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv")
 sc.setJobDescription("Format input CSV into delta (multiple files)")
 inputCsv.repartition(4).write.format("delta").save(inputDir)
 val deltaTable = DeltaTable.forPath(inputDir)

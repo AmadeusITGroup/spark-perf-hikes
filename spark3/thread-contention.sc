@@ -28,7 +28,7 @@ val threadLockOperation = udf { (s: String) =>
   val token = System.getProperties // just a token to lock on within the same JVM (same worker)
   token.synchronized { s"op($s)" }
 }
-val input = s"${System.getenv("SSCE_PATH")}/datasets/optd_por_public_all.csv"
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv"
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(input).cache()
 // COMMAND ----------
 spark.sparkContext.setJobDescription("Dataframe save with UDF with thread contention")
