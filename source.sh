@@ -1,6 +1,6 @@
 function spark-run-local() {
   local script="$1"
-  local args=$(cat $script | sed 's#// Arguments: ##gp')
+  local args=$(cat $script | sed -n 's#// Local: ##gp')
   cat $script - | spark-shell $args
 }
 
@@ -10,7 +10,7 @@ function spark-import-databricks() {
   local profile=$2
   local dst=$3/$filename
   local extraargs=$4
-  local args=$(cat $src | sed 's#// Cluster: ##p') # unused for now
+  local args=$(cat $src | sed -n 's#// Cluster: ##p') # unused for now
   echo "Uploading: $src to ($profile) $dst ..."
   databricks workspace import  $dst --profile $profile --language SCALA --file $src $extraargs 
 }
