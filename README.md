@@ -8,9 +8,16 @@ This module allows to launch snippets on Spark 3, where each contains:
 
 ## Getting started
 
-### a. Initialize the environment
+### A. Initialize the environment
 
 The very first time you use the project you need to install it. 
+
+0. Configure the Databricks cli on your machine.
+
+   This step is optional, and you have to do it only if you want to run the snippets on Databricks.
+   Be sure to:
+   - install Databricks cli versions 0.205 and above (cf. https://docs.databricks.com/en/dev-tools/cli/tutorial.html)
+   - define the profile correctly in your `~/.databrickscfg` file for authentication.
 
 1. Add the following to your `.bashrc` file: 
 
@@ -24,12 +31,14 @@ source $SSCE_PATH/source.sh # to define the aliases
 
 ```
 spark-init-datasets-local
-spark-init-datasets-databricks
+spark-init-datasets-databricks <profile>
 ```
 
 3. Make sure `spark-shell` is in your `PATH`
 
-### b. Launch a snippet
+### B. Launch a snippet
+
+#### B.1 Launch a snippet locally
 
 ```bash
 spark-run-local <snippet.sc>
@@ -46,7 +55,15 @@ Some existing snippets:
 - Deletion vectors
 - ...
 
-### c. Write your snippet
+#### B.2 Launch a snippet on Databricks
+
+First copy the snippet you want on your Databricks workspace:
+
+```
+spark-import-databricks <snippet.sc> <profile> <destination-folder> <extra-args: e.g., --overwrite>
+```
+
+### C. Write your snippet
 
 #### IDE setup
 
