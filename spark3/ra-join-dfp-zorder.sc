@@ -46,8 +46,10 @@ even having z-oder and activating DFP, there will still be read amplification.
 import java.util.UUID
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.DataFrame
 import io.delta.tables.DeltaTable
 
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 val probeDir = tmpPath + "/input"
 val buildDir = tmpPath + "/employee"
@@ -64,15 +66,46 @@ spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
 // COMMAND ----------
 
 // Probe side
-spark.sparkContext.setJobDescription("Read input CSV")
-val inputCsv = spark.read.option("delimiter","^").option("header","true").csv("/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv")
 spark.sparkContext.setJobDescription("Create probe table")
+val inputCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
 inputCsv.write.mode("overwrite").format("delta").save(probeDir)
 
 // z-order the probe table on the join key
 spark.sparkContext.setJobDescription("Z-order probe table")
 spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 1 * 1024 * 1024L)
 DeltaTable.forPath(probeDir).optimize().executeZOrderBy("country_code")
+
+// COMMAND ----------
+
+// Note the total number of files after z-ordering
+DeltaTable.forPath(probeDir).detail.select("numFiles").show
+
+// COMMAND ----------
+
+def getMaxMinStats(tablePath: String, colName: String, commit: Int): DataFrame = {
+  // stats on parquet files added to the table
+  import org.apache.spark.sql.functions._
+  import org.apache.spark.sql.types._
+  val statsSchema = new StructType()
+    .add("numRecords", IntegerType, true)
+    .add("minValues", MapType(StringType, StringType), true)
+    .add("maxValues", MapType(StringType, StringType), true)
+  val df = spark.read.json(s"$tablePath/_delta_log/*${commit}.json")
+    .withColumn("commit_json_name", input_file_name())
+    .withColumn("add_stats", from_json(col("add.stats"), statsSchema))
+    .withColumn(s"add_stats_min_col_${colName}", col(s"add_stats.minValues.$colName"))
+    .withColumn(s"add_stats_max_col_${colName}", col(s"add_stats.maxValues.$colName"))
+    .withColumn("add_size", col("add.size"))
+    .withColumn("add_path", col("add.path"))
+    .where(col("add_path").isNotNull)
+    .select("add_path", s"add_stats_min_col_${colName}", s"add_stats_max_col_${colName}")
+    .orderBy(s"add_stats_min_col_${colName}", "add_path")
+  df
+}
+
+// Note that only 3 files out of 17 contain the country_code 'FR'
+spark.sparkContext.setJobDescription(s"Display max/min stats for files present in delta table after z-order")
+getMaxMinStats(probeDir, "country_code", 1).show(false)
 
 // COMMAND ----------
 
@@ -84,9 +117,9 @@ val employeesData = Seq(
   Employee("Gene", "Intern", "FR"),
   Employee("Mau", "Intern", "FR"),
   // Important note: if the join keys on the build side are such that they hit every files of the probe side,
-  // even having z-oder and activating DFP, there will still be read amplification. Uncomment the following line to
-  // see that 1 more file will be read just for one key.
-  Employee("Lex", "Intern", "ZA"),
+  // even having z-oder and activating DFP, there will still be read amplification.
+  // Uncomment the following line to see that 1 more file will be read just for one new key (ZA).
+  // Employee("Lex", "Intern", "ZA"),
   Employee("Mathieu", "Software Engineer", "FR"),
   Employee("Thomas", "Intern", "FR")
 )
@@ -110,3 +143,6 @@ def joinTables(description: String): Unit = {
 }
 
 joinTables("DFP + zorder")
+
+// Go to the Databricks Spark UI, look for the SQL query corresponding to the Join,
+// and see the number of files actually read in the 'Scan parquet' node
