@@ -53,12 +53,13 @@ Some existing snippets:
 To write a snippet we encourage you to create a `build.sbt` file, and load the project as a scala project:
 
 ```scala
-val sparkVersion         = "3.4.1"
+val sparkVersion = "3.4.1"
+val deltaVersion = "2.4.0"
 val deps = Seq(
   "org.apache.spark" %% "spark-core" % sparkVersion,
   "org.apache.spark" %% "spark-sql" % sparkVersion,
   "org.apache.spark" %% "spark-avro" % sparkVersion,
-  "io.delta" %% "delta-core" % "2.4.0"
+  "io.delta" %% "delta-core" % deltaVersion
 )
 lazy val root = (project in file("."))
   .settings(

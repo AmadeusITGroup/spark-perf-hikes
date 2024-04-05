@@ -2,7 +2,8 @@
 
 
 - [X] Thread contention
-- [ ] RAF dfp zorder
+- [ ] RAF dfp zorder joins
+- [ ] RAF dfp zorder merge
 - [ ] WAF
 
 

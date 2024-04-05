@@ -8,17 +8,35 @@
 This example shows how to address the read amplification problem in case of joins, 
 using Dynamic File Pruning (DFP) and z-order.
 
+References:
+- https://docs.databricks.com/en/optimizations/dynamic-file-pruning.html
+- https://www.databricks.com/blog/2020/04/30/faster-sql-queries-on-delta-lake-with-dynamic-file-pruning.html
+- https://docs.databricks.com/en/delta/data-skipping.html#delta-zorder
+
 IMPORTANT: DFP is only available when running on Databricks.
 
 # Symptom
-You are reading way more data that is actually needed to perform the join operation.
+You are joining a small table with a big one and you are reading way more data that is actually needed 
+to perform the join operation.
+You know that you could read less data, because you know that only few records in the big table match
+with the join keys present in the small table.
 
 # Explanation
 
-We are doing a joing between the following two tables:
-- a "build" side: smaller table (must be broadcastable)
-- a "probe" side: bigger table (should be z-ordered)
+We are doing a join between the following two tables:
+- a "build" side: smaller table
+- a "probe" side: bigger table
 
+In order to limit read amplification, we can:
+- z-order the probe side on the join key, in order to colocate closer keys in the same files
+- make sure that DFP is activated
+  - the build side must be broadcastable
+  - spark.databricks.optimizer.deltaTableSizeThreshold should be small enough
+  - spark.databricks.optimizer.deltaTableFilesThreshold should be small enough
+  - spark.databricks.optimizer.dynamicFilePruning should be true
+
+Important note: if the join keys on the build side are such that they hit every files of the probe side,
+even having z-oder and activating DFP, there will still be read amplification.
 ...
 
 */
@@ -26,6 +44,8 @@ We are doing a joing between the following two tables:
 // COMMAND ----------
 
 import java.util.UUID
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions.col
 import io.delta.tables.DeltaTable
 
 // COMMAND ----------
@@ -36,21 +56,41 @@ val buildDir = tmpPath + "/employee"
 
 // COMMAND ----------
 
-sc.setJobDescription("Read input CSV")
+val spark: SparkSession = SparkSession.active
+import spark.implicits._
+
+// Be sure to have the conditions to trigger DFP: broadcast join + table/files thresholds
+spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1000000000L)
+spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
+spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
+
+// Probe side
+spark.sparkContext.setJobDescription("Read input CSV")
 val inputCsv = spark.read.option("delimiter","^").option("header","true").csv("/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv")
-sc.setJobDescription("Format input CSV into delta (probe side)")
+spark.sparkContext.setJobDescription("Create probe table")
 inputCsv.repartition(4).write.format("delta").save(probeDir)
 
+// z-order the probe table on the join key
+spark.sparkContext.setJobDescription("Z-order probe table")
+spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 1 * 1024 * 1024L)
+DeltaTable.forPath(probeDir).optimize().executeZOrderBy("country_code")
+
+// Build side
 case class Employee(name: String, role: String, residence: String)
 val employeesData = Seq(
   Employee("Thierry", "Software Engineer", "FR"),
   Employee("Mohammed", "DevOps", "FR"),
   Employee("Gene", "Intern", "FR"),
   Employee("Mau", "Intern", "FR"),
+  // Important note: if the join keys on the build side are such that they hit every files of the probe side,
+  // even having z-oder and activating DFP, there will still be read amplification. Uncomment the following line to
+  // see that 1 more file will be read just for one key.
+  // Employee("Fer", "Intern", "AR"),
   Employee("Mathieu", "Software Engineer", "FR"),
   Employee("Thomas", "Intern", "FR")
 )
-sc.setJobDescription("Create build table")
+spark.sparkContext.setJobDescription("Create build table")
 employeesData.toDF.write.format("delta").save(buildDir)
 
 val deltaTable = DeltaTable.forPath(probeDir)
@@ -60,7 +100,6 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
   // stats on parquet files added to the table
   import org.apache.spark.sql.functions._
   import org.apache.spark.sql.types._
-  import io.delta.tables.DeltaTable
   val statsSchema = new StructType()
       .add("numRecords", IntegerType, true)
       .add("minValues", MapType(StringType, StringType), true)
@@ -75,7 +114,7 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
     .where(col("add_path").isNotNull)
     .select("add_path", s"add_stats_min_col_${colName}", s"add_stats_max_col_${colName}")
     .orderBy(s"add_stats_min_col_${colName}", "add_path")
-  sc.setJobDescription(s"Display max/min stats for files present in delta table (commit ${commit})")
+  spark.sparkContext.setJobDescription(s"Display max/min stats for files present in delta table (commit ${commit})")
   df.show(false)
 }
 
@@ -83,23 +122,11 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
 def joinTables(description: String): Unit = {
   val probe = DeltaTable.forPath(probeDir).toDF
   val build = DeltaTable.forPath(buildDir).toDF
-  sc.setJobDescription(s"Join tables: $description")
+  spark.sparkContext.setJobDescription(s"Join tables: $description")
   probe
   .join(build, build("residence") === probe("country_code"), "inner")
   .where(col("role") === "Intern")
   .count()
 }
 
-joinTables("before zorder")
-
-// Be sure to trigger DFP: broadcast join + table/files thresholds
-spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 10000000000)
-spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
-spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
-spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", true)
-
-// zorder table
-spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 1 * 1024 * 1024L)
-DeltaTable.forPath(probeDir).optimize().executeZOrderBy("country_code")
-
-joinTables("after zorder")
+joinTables("DFP + zorder")
