@@ -3,9 +3,13 @@
 import java.util.UUID
 import io.delta.tables.DeltaTable
 
+// COMMAND ----------
+
 val tmpPath = "/tmp/tmpPath/" + UUID.randomUUID()
 val probeDir = tmpPath + "/input"
 val buildDir = tmpPath + "/employee"
+
+// COMMAND ----------
 
 sc.setJobDescription("Read input CSV")
 val inputCsv = spark.read.option("delimiter","^").option("header","true").csv(s"${System.getenv("SSCE_PATH")}/datasets/optd_por_public_all.csv")

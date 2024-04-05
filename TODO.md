@@ -1,5 +1,12 @@
 # TODO
 
+
+- [ ] Thread contention
+- [ ] RAF
+- [ ] WAF
+- [ ] DFP
+
+
 - [ ] Specify spark version in bundle itself (do not hardcode it)
 - [ ] Feature to be able to launch script both locally and in cluster (even if cluster settings are to be set manually)
 - [ ] Version management (spark/delta/avro/...). Both local and Databricks.
