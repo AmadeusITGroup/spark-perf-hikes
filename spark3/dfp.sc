@@ -1,4 +1,28 @@
 // Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-core_2.12:2.4.0,org.apache.spark:spark-avro_2.12:3.3.2 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Databricks: ...
+
+// COMMAND ----------
+
+/*
+This example shows how to address the read amplification problem in case of joins, 
+using Dynamic File Pruning (DFP) and z-order.
+
+IMPORTANT: DFP is only available when running on Databricks.
+
+# Symptom
+You are reading way more data that is actually needed to perform the join operation.
+
+# Explanation
+
+We are doing a joing between the following two tables:
+- a "build" side: smaller table (must be broadcastable)
+- a "probe" side: bigger table (should be z-ordered)
+
+...
+
+*/
+
+// COMMAND ----------
 
 import java.util.UUID
 import io.delta.tables.DeltaTable

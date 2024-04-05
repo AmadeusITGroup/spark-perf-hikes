@@ -1,3 +1,5 @@
+spark_sandbox_tmp_path=/tmp/amadeus-spark-lab/
+
 function spark-run-local() {
   local script="$1"
   local args=$(cat $script | sed -n 's#// Local: ##gp')
@@ -13,5 +15,17 @@ function spark-import-databricks() {
   local args=$(cat $src | sed -n 's#// Cluster: ##p') # unused for now
   echo "Uploading: $src to ($profile) $dst ..."
   databricks workspace import  $dst --profile $profile --language SCALA --file $src $extraargs 
+}
+
+function spark-init-datasets-local() {
+  mkdir -p $spark_sandbox_tmp_path/datasets
+  curl https://raw.githubusercontent.com/opentraveldata/opentraveldata/master/opentraveldata/optd_por_public_all.csv > $spark_sandbox_tmp_path/datasets/optd_por_public_all.csv
+}
+
+function spark-init-datasets-databricks() {
+  local profile=$1
+  spark-init-datasets-local
+  local src=$spark_sandbox_tmp_path/datasets/optd_por_public_all.csv
+  databricks fs cp $src dbfs:/$src --profile $profile
 }
 

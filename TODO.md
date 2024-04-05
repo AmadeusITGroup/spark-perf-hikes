@@ -1,10 +1,9 @@
 # TODO
 
 
-- [ ] Thread contention
-- [ ] RAF
+- [X] Thread contention
+- [ ] RAF dfp zorder
 - [ ] WAF
-- [ ] DFP
 
 
 - [ ] Specify spark version in bundle itself (do not hardcode it)
