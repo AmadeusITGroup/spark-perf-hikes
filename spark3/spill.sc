@@ -1,8 +1,7 @@
 // Arguments: --executor-memory 1G --driver-memory 1G --executor-cores 1
 sc.setJobDescription("Spill Listener")
-// Stolen the Apache Spark test suite, TestUtils
-// https://github.com/apache/spark/blob/master/core/src/main/scala/org/apache/spark/TestUtils.scala
 
+// See https://github.com/apache/spark/blob/master/core/src/main/scala/org/apache/spark/TestUtils.scala
 // In logs look for: INFO ExternalSorter: Task 1 force spilling in-memory map to disk it will release 232.1 MB memory
 class SpillListener extends org.apache.spark.scheduler.SparkListener {
   import org.apache.spark.scheduler.{SparkListenerTaskEnd,SparkListenerStageCompleted}

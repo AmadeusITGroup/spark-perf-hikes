@@ -1,13 +1,12 @@
 # README
 
-This module allows to launch 'boundles' of snippets on Spark 3, where each boundle contains:
+This module allows to launch snippets on Spark 3, where each contains:
 
 - a scala snippet
 - the dependencies
 - the spark settings
 
 ## Getting started
-
 
 ### a. Initialize the environment
 
@@ -50,20 +49,13 @@ val df = spark.read.option("delimiter","^").option("header","true").csv("dataset
 
 Each bundle contains a `// Arguments: ` section with the parameters passed to Spark shell to run the snippet.
 
-## Use cases
+## Existing bundles
 
-Basic:
 - Spill
-- TODO Simple merge
-- Simple merge in streaming query
-
-Read Amplification:
-- Z-Order
-- DFP
-- 
-
-Write Amplification:
-- ...
-
-Misc:
 - Thread Contention
+- Partition Pruning
+- File Pruning
+- Z-Order
+- Dynamic File Pruning
+- Deletion vectors
+- ...
