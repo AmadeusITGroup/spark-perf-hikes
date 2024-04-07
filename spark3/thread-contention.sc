@@ -27,7 +27,10 @@ val spark: SparkSession = SparkSession.active
 // COMMAND ----------
 val threadLockOperation = udf { (s: String) =>
   val token = System.getProperties // just a token to lock on within the same JVM (same worker)
-  token.synchronized { s"op($s)" }
+  token.synchronized { 
+    val t = Range.inclusive(1, 5000).sum
+    s"op($s($t))" 
+  }
 }
 val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv"
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(input).cache()
