@@ -1,12 +1,12 @@
-// Spark: 3.4.2
-// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-core_2.12:2.4.0,org.apache.spark:spark-avro_2.12:3.3.2 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Spark: 3.5.1
+// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 // Databricks: ...
 
 // COMMAND ----------
 
 /*
 This example shows how to address the read amplification problem in case of joins, 
-using Dynamic File Pruning (DFP) and z-order.
+using Dynamic File Pruning (DFP), coupled with a data skipping friendly data layout such as z-order.
 
 References:
 - https://docs.databricks.com/en/optimizations/dynamic-file-pruning.html
@@ -16,6 +16,7 @@ References:
 IMPORTANT: DFP is only available when running on Databricks.
 
 # Symptom
+
 You are joining a small table with a big one and you are reading way more data that is actually needed 
 to perform the join operation.
 You know that you could read less data, because you know that only few records in the big table match
@@ -27,9 +28,15 @@ We are doing a join between the following two tables:
 - a "build" side: smaller table
 - a "probe" side: bigger table
 
-In order to limit read amplification, we can:
-- z-order the probe side on the join key, in order to colocate closer keys in the same files
-- make sure that DFP is activated
+The probe side is z-ordered on the join key, in order to co-locate closer keys in the same set of files
+
+In the first scenario, DFP is not activated.
+Here we see that the whole probe table is read.
+
+In the second scenario, DFP is activated.
+Here we see that only the files containing the join keys present in the build table are read.
+
+In order to make sure that DFP can kick-in:
   - the build side must be broadcastable
   - spark.databricks.optimizer.deltaTableSizeThreshold should be small enough
   - spark.databricks.optimizer.deltaTableFilesThreshold should be small enough
@@ -57,12 +64,6 @@ val buildDir = tmpPath + "/employee"
 val spark: SparkSession = SparkSession.active
 import spark.implicits._
 
-// Be sure to have the conditions to trigger DFP: broadcast join + table/files thresholds
-spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1000000000L)
-spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
-spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
-spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
-
 // COMMAND ----------
 
 // Probe side
@@ -75,12 +76,12 @@ airports.write.mode("overwrite").format("delta").save(probeDir)
 
 // z-order the probe table on the join key
 spark.sparkContext.setJobDescription("Z-order probe table")
-spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 1 * 1024 * 1024L)
+spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 50 * 1024L)
 DeltaTable.forPath(probeDir).optimize().executeZOrderBy("country_code")
 
 // COMMAND ----------
 
-// Note the total number of files after z-ordering
+// Note the total number of files after z-ordering (8)
 DeltaTable.forPath(probeDir).detail.select("numFiles").show
 
 // COMMAND ----------
@@ -106,7 +107,7 @@ def getMaxMinStats(tablePath: String, colName: String, commit: Int): DataFrame =
   df
 }
 
-// Note that only 3 files out of 17 contain the country_code 'FR'
+// Note that only 1 files out of 8 contains the country_code 'FR'
 spark.sparkContext.setJobDescription(s"Display max/min stats for files present in delta table after z-order")
 getMaxMinStats(probeDir, "country_code", 1).show(false)
 
@@ -131,9 +132,6 @@ employeesData.toDF.write.mode("overwrite").format("delta").save(buildDir)
 
 // COMMAND ----------
 
-val deltaTable = DeltaTable.forPath(probeDir)
-val employeeTable = DeltaTable.forPath(buildDir)
-
 // Join a 2 tables (probe and build), adding a filter in the smaller one (the build side of the join)
 def joinTables(description: String): Unit = {
   val probe = DeltaTable.forPath(probeDir).toDF
@@ -145,7 +143,18 @@ def joinTables(description: String): Unit = {
   .count()
 }
 
-joinTables("DFP + zorder")
+// First scenario: DFP is not activated
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "false")
+joinTables("NO DFP")
+
+// Be sure to have the conditions to trigger DFP: DFP enabled, broadcast join, table/files thresholds
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
+spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1000000000L)
+spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
+spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
+
+// Second scenario: DFP activated and preconditions are met
+joinTables("DFP")
 
 // Go to the Databricks Spark UI, look for the SQL query corresponding to the Join,
 // and see the number of files actually read in the 'Scan parquet' node
