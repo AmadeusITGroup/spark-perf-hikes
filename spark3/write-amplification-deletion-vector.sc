@@ -8,16 +8,18 @@
 This example shows how a merge of a few records onto a large delta table (matching few records) can lead to large write
 amplification, and how to improve the situation by using Merge-on-Read strategy with Deletion Vectors.
 
+References:
+- https://docs.delta.io/3.1.0/delta-deletion-vectors.html
+
 # Symptom
 The volume of data being rewritten in a Delta Table on a MERGE is way above the volume of the records expected to be updated / added.
 
 # Explanation
 Let's take first the case without Deletion Vectors. Upon MERGE, the Delta Table will rewrite the files that contain the
 records to be updated / added. This is clearly suboptimal when few records are to be updated. For example, in an extreme case, if
-there is 1 record to be updated in a file with a million records, the whole file has to be deleted and written in a newer version.
+there is 1 record to be updated in a large file, the whole file has to be replaced.
 Instead, Delete Vectors can be used (Merge-on-Read strategy). This strategy reuses large files with few records to be deleted, and simply
 marks the records to be ignored from the such files, in deletion vector files. New records are written in new small files.
-See this https://docs.delta.io/latest/delta-deletion-vectors.html for more information.
 */
 
 // COMMAND ----------
@@ -30,14 +32,11 @@ import org.apache.spark.sql.functions.{col, lit}
 val spark: SparkSession = SparkSession.active
 
 spark.conf.set("spark.sql.adaptive.enabled", false)
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 
 spark.sparkContext.setJobDescription("Read CSV")
-val rawCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
-val projected = rawCsv.select("iata_code", "envelope_id", "name", "latitude", "longitude", "date_from", "date_until", "comment", "country_code", "country_name", "continent_name", "timezone", "wiki_link")
-projected.where(col("location_type")==="A" and col("iata_code").isNotNull).createOrReplaceTempView("table")
-val airports = spark.sql("SELECT row_number() OVER (PARTITION BY iata_code ORDER BY envelope_id, date_from DESC) as r, * FROM table").where(col("r") === 1).drop("r")
+val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
 
 // COMMAND ----------
 
@@ -51,44 +50,41 @@ spark.sql(s"ALTER TABLE delta.`$deltaWithDvDir`    SET TBLPROPERTIES ( delta.ena
 
 // COMMAND ----------
 
-def buildDataframeToMerge(countryCode: String, newCode: String): DataFrame = {
-  val df = airports.where(col("country_code") === countryCode).drop("iata_code").withColumn("iata_code", lit(newCode))
-  println(s"A total of ${df.count()} records found that will be merged (matching country_code=$countryCode)")
+def buildDataframeToMerge(idPrefix: String, newComment: String): DataFrame = {
+  val df = airports.where(col("id") like idPrefix + "%").drop("comment").withColumn("comment", lit(newComment))
+  println(s"${df.count()} records will be merged (matching id prefix '$idPrefix'*) with new comment '$newComment'")
   df
 }
 
 def mergeOntoDeltaTable(target: DeltaTable, df: DataFrame) = {
   target.as("t")
-    .merge(df.as("df"), "df.geoname_id == t.geoname_id")
+    .merge(df.as("df"), "df.id == t.id")
     .whenMatched.updateAll.whenNotMatched.insertAll.execute()
 }
 
-def showDeltaTableHistory(target: DeltaTable): Unit = {
+def showMergeStats(target: DeltaTable): Unit = {
   target.history().select("version", "operation",
     "operationMetrics.numTargetFilesAdded", "operationMetrics.numTargetFilesRemoved",
     "operationMetrics.numTargetBytesAdded", "operationMetrics.numTargetBytesRemoved"
-  ).show(false)
+  ).where(col("OPERATION") === "MERGE").show(false)
 }
 
 // COMMAND ----------
 
-spark.sparkContext.setJobDescription("Merge without DV")
-mergeOntoDeltaTable(DeltaTable.forPath(deltaWithoutDvDir), buildDataframeToMerge("AR", "newcode1"))
-
-spark.sparkContext.setJobDescription("Merge with DV")
-mergeOntoDeltaTable(DeltaTable.forPath(deltaWithDvDir), buildDataframeToMerge("AR", "newcode1"))
-
-//buildDataframeToMerge("AR", "newcode1").createOrReplaceTempView("df2")
-//spark.sql(s"MERGE INTO delta.`${deltaWithDvDir}` as src USING df2 ON src.geoname_id = dfw.geoname_id WHEN MATCHED THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT *")
+spark.conf.set("spark.sql.shuffle.partitions", 3)
 
 // COMMAND ----------
 
-spark.sparkContext.setJobDescription("Show stats")
-println("WITHOUT DV")
-// large write amplification (MERGE deletes all old files and writes new large files)
-showDeltaTableHistory(DeltaTable.forPath(deltaWithoutDvDir))
-println("WITH DV")
-// small write amplification (MERGE keeps old files marking records to be ignored, and writes new small files with new records)
-showDeltaTableHistory(DeltaTable.forPath(deltaWithDvDir))
+// WITHOUT DV
+spark.sparkContext.setJobDescription("MERGE WITHOUT DV")
+mergeOntoDeltaTable(DeltaTable.forPath(deltaWithoutDvDir), buildDataframeToMerge("SF", "newcomment"))
+// large write amplification (MERGE deletes all old files and writes new large files, as many as shuffle.partitions)
+showMergeStats(DeltaTable.forPath(deltaWithoutDvDir))
 
+// WITH DV
+spark.sparkContext.setJobDescription("MERGE WITH DV")
+mergeOntoDeltaTable(DeltaTable.forPath(deltaWithDvDir), buildDataframeToMerge("SF", "newcomment"))
+// small write amplification (MERGE keeps old files marking records to be ignored, and writes new small file with the new records)
+showMergeStats(DeltaTable.forPath(deltaWithDvDir))
 
+// COMMAND ----------
