@@ -10,8 +10,16 @@ function spark-init-datasets-local() {
   fi
 }
 
+function spark-init-datasets-local-tmp() {
+  if [ ! -f ${spark_sandbox_tmp_path}datasets/optd_por_public_filtered.csv ]; then
+    mkdir -p $spark_sandbox_tmp_path/datasets
+    cp misc/optd_por_public_filtered.csv $spark_sandbox_tmp_path/datasets/optd_por_public_filtered.csv
+  else
+    echo "Datasets already present in ${spark_sandbox_tmp_path}datasets/"
+  fi
+}
+
 function spark-local-check-version() {
-  spark-init-datasets-local
   local expected_version=$1
   local spark_path=$(readlink -e $(which spark-shell))
   if [[ "${spark_path}" == *"$expected_version"* ]] ;then
@@ -25,6 +33,7 @@ function spark-run-local() {
   local script="$1"
   local args=$(cat $script | sed -n 's#// Local: ##gp')
   local version=$(cat $script | sed -n 's#// Spark: ##gp')
+  spark-init-datasets-local-tmp
   spark-local-check-version $version
   cat $script - | spark-shell $args
 }
@@ -47,3 +56,9 @@ function spark-init-datasets-databricks() {
   databricks fs cp $src dbfs:/$src --profile $profile
 }
 
+function spark-init-datasets-databricks-tmp() {
+  local profile=$1
+  spark-init-datasets-local
+  local src=$spark_sandbox_tmp_path/datasets/optd_por_public_filtered.csv
+  databricks fs cp $src dbfs:/$src --profile $profile
+}

@@ -33,7 +33,7 @@ val projected = rawCsv.select("id", "iata_code", "envelope_id", "name", "latitud
 projected.where(col("location_type")==="A" and col("iata_code").isNotNull).createOrReplaceTempView("table")
 val airports = spark.sql("SELECT row_number() OVER (PARTITION BY iata_code ORDER BY envelope_id, date_from DESC) as r, * FROM table").where(col("r") === 1).drop("r")
 
-airports.coalesce(1).write.mode("overwrite").option("header", "true").csv(tmpFiltered)
+airports.coalesce(1).write.mode("overwrite").option("delimiter","^").option("header", "true").csv(tmpFiltered)
 
 println(s"cp $tmpFiltered/*.csv $filtered")
 

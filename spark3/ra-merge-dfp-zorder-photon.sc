@@ -1,12 +1,12 @@
-// Spark: 3.4.2
-// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-core_2.12:2.4.0,org.apache.spark:spark-avro_2.12:3.3.2 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Spark: 3.5.1
+// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 // Databricks: ...
 
 // COMMAND ----------
 
 /*
 This example shows how to address the read amplification problem in case of merges,
-using Dynamic File Pruning (DFP), z-order and Photon.
+using Dynamic File Pruning (DFP) and Photon, coupled with a data skipping friendly data layout such as z-order.
 
 References:
 - https://docs.databricks.com/en/optimizations/dynamic-file-pruning.html
@@ -16,21 +16,27 @@ References:
 IMPORTANT: DFP and Photon are only available when running on Databricks.
 
 # Symptom
-You are merging a small dataframe into a big table and you are reading way more data that is actually needed
+You are merging a small dataframe into a delta table and you are reading way more data that is actually needed
 to perform the merge.
 You know that you could read less data, because you know that only few records in the input dataframe will match
 with records in the big table.
 
 # Explanation
 
-In order to limit read amplification, we can:
-- z-order the table, in order to colocate closer keys in the same files
-- make sure that DFP is activated
-  - the build side must be broadcastable
+The delta table is z-ordered on the merge key, in order to co-locate closer keys in the same set of files.
+We assume that we are running on Databricks using Photon.
+
+First scenario: No DFP
+Here we see that the whole delta table is read for the merge.
+
+Second scenario: DFP
+Here we see that only the delta table files containing the merge keys present in the small dataframe are read.
+
+In order to make sure that DFP can kick-in:
+  - the small dataframe must be broadcastable
   - spark.databricks.optimizer.deltaTableSizeThreshold should be small enough
   - spark.databricks.optimizer.deltaTableFilesThreshold should be small enough
   - spark.databricks.optimizer.dynamicFilePruning should be true
-- use Photon
 
 Important note: if the keys in the input dataframe are such that they hit every files of the table,
 even having z-oder and activating DFP, there will still be read amplification.
@@ -46,31 +52,22 @@ import org.apache.spark.sql.functions.{col, lit}
 import org.apache.spark.sql.DataFrame
 import io.delta.tables.DeltaTable
 
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 val deltaDir = tmpPath + "/input"
 
 val spark: SparkSession = SparkSession.active
 
-// Be sure to have the conditions to trigger DFP: broadcast join + table/files thresholds
-spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 10000000000L)
-spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
-spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
-spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
-
 // COMMAND ----------
 
 // Destination delta table
 spark.sparkContext.setJobDescription("Create delta table")
-val rawCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
-val projected = rawCsv.select("iata_code", "envelope_id", "name", "latitude", "longitude", "date_from", "date_until", "comment", "country_code", "country_name", "continent_name", "timezone", "wiki_link")
-projected.where(col("location_type")==="A" and col("iata_code").isNotNull).createOrReplaceTempView("table")
-val airports = spark.sql("SELECT row_number() OVER (PARTITION BY iata_code ORDER BY envelope_id, date_from DESC) as r, * FROM table").where(col("r") === 1).drop("r")
+val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
 airports.write.mode("overwrite").format("delta").save(deltaDir)
 
-// z-order the delta table on the join key
-spark.sparkContext.setJobDescription("Z-order probe table")
-spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 1 * 1024 * 1024L)
+// z-order the delta table on the merge key
+spark.sparkContext.setJobDescription("Z-order delta table")
+spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 50 * 1024L)
 DeltaTable.forPath(deltaDir).optimize().executeZOrderBy("iata_code")
 
 // COMMAND ----------
@@ -80,28 +77,59 @@ DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // COMMAND ----------
 
-def buildDataframeToMerge(countryCode: String, newVal: String): DataFrame =
-  airports.where(col("country_code") === countryCode).drop("population").withColumn("population", lit(newVal))
+def getMaxMinStats(tablePath: String, colName: String, commit: Int): DataFrame = {
+  // stats on parquet files added to the table
+  import org.apache.spark.sql.functions._
+  import org.apache.spark.sql.types._
+  val statsSchema = new StructType()
+    .add("numRecords", IntegerType, true)
+    .add("minValues", MapType(StringType, StringType), true)
+    .add("maxValues", MapType(StringType, StringType), true)
+  val df = spark.read.json(s"$tablePath/_delta_log/*${commit}.json")
+    .withColumn("commit_json_name", input_file_name())
+    .withColumn("add_stats", from_json(col("add.stats"), statsSchema))
+    .withColumn(s"add_stats_min_col_${colName}", col(s"add_stats.minValues.$colName"))
+    .withColumn(s"add_stats_max_col_${colName}", col(s"add_stats.maxValues.$colName"))
+    .withColumn("add_size", col("add.size"))
+    .withColumn("add_path", col("add.path"))
+    .where(col("add_path").isNotNull)
+    .select("add_path", s"add_stats_min_col_${colName}", s"add_stats_max_col_${colName}")
+    .orderBy(s"add_stats_min_col_${colName}", "add_path")
+  df
+}
 
-val keyCols = Seq("iata_code", "geoname_id", "envelope_id", "fcode", "location_type")
+// Note that only 1 files out of 9 contains the iata_code 'AAI'
+spark.sparkContext.setJobDescription(s"Display max/min stats for files present in delta table after z-order")
+getMaxMinStats(deltaDir, "iata_code", 1).show(false)
+
+// COMMAND ----------
+
+def buildDataframeToMerge(iataCode: String, newVal: String): DataFrame =
+  airports.where(col("iata_code") === iataCode).drop("comment").withColumn("comment", lit(newVal))
+
 def merge(df: DataFrame): Unit = {
+  val keyCols = Seq("iata_code")
   DeltaTable
     .forPath(deltaDir).as("o")
     .merge(df.as("t"), keyCols.map(colName => s"t.$colName == o.$colName").mkString(" and "))
     .whenMatched.updateAll.whenNotMatched.insertAll.execute()
 }
 
-spark.sparkContext.setJobDescription("Merge IT")
-merge(buildDataframeToMerge("IT", "1000"))
+// First scenario: No DFP
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
+spark.sparkContext.setJobDescription("Merge dataframe - NO DFP")
+merge(buildDataframeToMerge("AAI", "no-dfp"))
+
+// Be sure to have the conditions to trigger DFP: DFP enabled, broadcast join, table/files thresholds
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
+spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1000000000L)
+spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
+spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
+
+// Second scenario: DFP
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
+spark.sparkContext.setJobDescription("Merge dataframe - DFP")
+merge(buildDataframeToMerge("AAI", "dfp"))
 
 // Go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
 // and see the number of files actually read in the 'PhotonScan parquet' node
-
-// WARNING
-// Problem with this example.
-// In the dataset there are TOO MANY nulls for the iata_code column, which is the z-order column
-// (14 out of 17 files have NULL, NULL as min/max values after zorder).
-// As we are doing an inner join, records with null keys on either side will be skipped.
-// So even without DFP/Photon, there is data skipping, simply because of this.
-// Even using a synthetic key that has no null, still there is some skipping
-// (5 files pruned out of 18, see ra-merge-dfp-zorder-photon-custom.sc on dbx)
