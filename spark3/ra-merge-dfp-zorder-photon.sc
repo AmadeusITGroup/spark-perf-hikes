@@ -104,8 +104,11 @@ getMaxMinStats(deltaDir, "iata_code", 1).show(false)
 
 // COMMAND ----------
 
-def buildDataframeToMerge(iataCode: String, newVal: String): DataFrame =
-  airports.where(col("iata_code") === iataCode).drop("comment").withColumn("comment", lit(newVal))
+def buildDataframeToMerge(iataCode: String, newVal: String): DataFrame = {
+  val c = airports.where(col("iata_code") === iataCode).drop("comment").withColumn("comment", lit(newVal)).collect()
+  val df = spark.createDataFrame(spark.sparkContext.parallelize(c), airports.schema)
+  df
+}
 
 def merge(df: DataFrame): Unit = {
   val keyCols = Seq("iata_code")
@@ -116,9 +119,12 @@ def merge(df: DataFrame): Unit = {
 }
 
 // First scenario: No DFP
-spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "false")
 spark.sparkContext.setJobDescription("Merge dataframe - NO DFP")
 merge(buildDataframeToMerge("AAI", "no-dfp"))
+
+// number of files after first merge
+DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // Be sure to have the conditions to trigger DFP: DFP enabled, broadcast join, table/files thresholds
 spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
@@ -127,9 +133,10 @@ spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
 spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
 
 // Second scenario: DFP
-spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
 spark.sparkContext.setJobDescription("Merge dataframe - DFP")
-merge(buildDataframeToMerge("AAI", "dfp"))
+merge(buildDataframeToMerge("BWU", "dfp"))
 
 // Go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
 // and see the number of files actually read in the 'PhotonScan parquet' node
+
+// FIXME: DFP not visible even on DBX with Photon !!!
