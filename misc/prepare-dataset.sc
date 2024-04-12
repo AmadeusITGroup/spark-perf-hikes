@@ -7,6 +7,8 @@
 /*
 This scripts simply prepares the input dataset, filtering the airports with non null IATA code and location type A.
 Only the most recent entry for each IATA code is kept.
+
+It is based on https://github.com/opentraveldata/opentraveldata dataset
 */
 
 // COMMAND ----------
