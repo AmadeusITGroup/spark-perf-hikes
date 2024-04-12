@@ -1,10 +1,10 @@
 spark_sandbox_tmp_path=/tmp/amadeus-spark-lab/
 
 function spark-init-datasets-local() {
-  if [ ! -f ${spark_sandbox_tmp_path}datasets/optd_por_public_all.csv ]; then
+  if [ ! -f ${spark_sandbox_tmp_path}datasets/optd_por_public.csv ]; then
     echo "Downloading datasets in ${spark_sandbox_tmp_path}datasets/"
     mkdir -p $spark_sandbox_tmp_path/datasets
-    curl https://raw.githubusercontent.com/opentraveldata/opentraveldata/master/opentraveldata/optd_por_public_all.csv > $spark_sandbox_tmp_path/datasets/optd_por_public_all.csv
+    curl https://raw.githubusercontent.com/opentraveldata/opentraveldata/master/opentraveldata/optd_por_public.csv > $spark_sandbox_tmp_path/datasets/optd_por_public.csv
   else
     echo "Datasets already downloaded in ${spark_sandbox_tmp_path}datasets/"
   fi
@@ -43,7 +43,7 @@ function spark-import-databricks() {
 function spark-init-datasets-databricks() {
   local profile=$1
   spark-init-datasets-local
-  local src=$spark_sandbox_tmp_path/datasets/optd_por_public_all.csv
+  local src=$spark_sandbox_tmp_path/datasets/optd_por_public.csv
   databricks fs cp $src dbfs:/$src --profile $profile
 }
 

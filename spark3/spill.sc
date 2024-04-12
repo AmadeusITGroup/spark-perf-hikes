@@ -52,7 +52,7 @@ spark.conf.set("spark.sql.shuffle.partitions", 1)
 spark.conf.set("spark.sql.adaptive.enabled", false)
 
 // The location of our non-skewed set of transactions
-val trxPath = "/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv"
+val trxPath = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
 def df() = spark.read.option("delimiter", "^").option("header", "true").csv(trxPath)
 val dfs = (1 to 100).map(_ => df()).reduce(_ union _)
 

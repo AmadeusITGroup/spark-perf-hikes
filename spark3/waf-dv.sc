@@ -29,26 +29,29 @@ import org.apache.spark.sql.functions.{col, lit}
 
 val spark: SparkSession = SparkSession.active
 
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv"
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 
 spark.sparkContext.setJobDescription("Read CSV")
-val inputCsv = spark.read.option("delimiter","^").option("header","true").csv(input).where(col("geoname_id").isNotNull).where(col("icao_code").isNotNull)
+val rawCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
+val projected = rawCsv.select("iata_code", "envelope_id", "name", "latitude", "longitude", "date_from", "date_until", "comment", "country_code", "country_name", "continent_name", "timezone", "wiki_link")
+projected.where(col("location_type")==="A" and col("iata_code").isNotNull).createOrReplaceTempView("table")
+val airports = spark.sql("SELECT row_number() OVER (PARTITION BY iata_code ORDER BY envelope_id, date_from DESC) as r, * FROM table").where(col("r") === 1).drop("r")
 
 // COMMAND ----------
 
 spark.sparkContext.setJobDescription("Initialize Delta tables")
 val deltaWithoutDvDir = tmpPath + "/delta-without-dv"
-inputCsv.write.format("delta").save(deltaWithoutDvDir)
+airports.write.format("delta").save(deltaWithoutDvDir)
 spark.sql(s"ALTER TABLE delta.`$deltaWithoutDvDir` SET TBLPROPERTIES ( delta.enableDeletionVectors = false)") // DV disabled
 val deltaWithDvDir = tmpPath + "/delta-with-dv"
-inputCsv.write.format("delta").save(deltaWithDvDir)
+airports.write.format("delta").save(deltaWithDvDir)
 spark.sql(s"ALTER TABLE delta.`$deltaWithDvDir`    SET TBLPROPERTIES ( delta.enableDeletionVectors = true)") // DV enabled
 
 // COMMAND ----------
 
 def buildDataframeToMerge(countryCode: String, newCode: String): DataFrame = {
-  val df = inputCsv.where(col("country_code") === countryCode).drop("iata_code").withColumn("iata_code", lit(newCode))
+  val df = airports.where(col("country_code") === countryCode).drop("iata_code").withColumn("iata_code", lit(newCode))
   println(s"A total of ${df.count()} records found that will be merged (matching country_code=$countryCode)")
   df
 }

@@ -49,7 +49,7 @@ import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.DataFrame
 import io.delta.tables.DeltaTable
 
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv"
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 val probeDir = tmpPath + "/input"
 val buildDir = tmpPath + "/employee"
@@ -67,8 +67,11 @@ spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
 
 // Probe side
 spark.sparkContext.setJobDescription("Create probe table")
-val inputCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
-inputCsv.write.mode("overwrite").format("delta").save(probeDir)
+val rawCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
+val projected = rawCsv.select("iata_code", "envelope_id", "name", "latitude", "longitude", "date_from", "date_until", "comment", "country_code", "country_name", "continent_name", "timezone", "wiki_link")
+projected.where(col("location_type")==="A" and col("iata_code").isNotNull).createOrReplaceTempView("table")
+val airports = spark.sql("SELECT row_number() OVER (PARTITION BY iata_code ORDER BY envelope_id, date_from DESC) as r, * FROM table").where(col("r") === 1).drop("r")
+airports.write.mode("overwrite").format("delta").save(probeDir)
 
 // z-order the probe table on the join key
 spark.sparkContext.setJobDescription("Z-order probe table")

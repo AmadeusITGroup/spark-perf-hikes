@@ -46,7 +46,7 @@ import org.apache.spark.sql.functions.{col, lit}
 import org.apache.spark.sql.DataFrame
 import io.delta.tables.DeltaTable
 
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_all.csv"
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 val deltaDir = tmpPath + "/input"
 
@@ -62,8 +62,11 @@ spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
 
 // Destination delta table
 spark.sparkContext.setJobDescription("Create delta table")
-val inputCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
-inputCsv.write.mode("overwrite").format("delta").save(deltaDir)
+val rawCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
+val projected = rawCsv.select("iata_code", "envelope_id", "name", "latitude", "longitude", "date_from", "date_until", "comment", "country_code", "country_name", "continent_name", "timezone", "wiki_link")
+projected.where(col("location_type")==="A" and col("iata_code").isNotNull).createOrReplaceTempView("table")
+val airports = spark.sql("SELECT row_number() OVER (PARTITION BY iata_code ORDER BY envelope_id, date_from DESC) as r, * FROM table").where(col("r") === 1).drop("r")
+airports.write.mode("overwrite").format("delta").save(deltaDir)
 
 // z-order the delta table on the join key
 spark.sparkContext.setJobDescription("Z-order probe table")
@@ -78,7 +81,7 @@ DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 // COMMAND ----------
 
 def buildDataframeToMerge(countryCode: String, newVal: String): DataFrame =
-  inputCsv.where(col("country_code") === countryCode).drop("population").withColumn("population", lit(newVal))
+  airports.where(col("country_code") === countryCode).drop("population").withColumn("population", lit(newVal))
 
 val keyCols = Seq("iata_code", "geoname_id", "envelope_id", "fcode", "location_type")
 def merge(df: DataFrame): Unit = {
