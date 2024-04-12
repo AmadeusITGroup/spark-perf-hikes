@@ -1,27 +1,22 @@
-// Spark: 3.4.2
-// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-core_2.12:2.4.0,org.apache.spark:spark-avro_2.12:3.3.2 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Spark: 3.5.1
+// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Databricks: ...
 
 import java.util.UUID
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.col
 
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 val inputDir = tmpPath + "/input"
 
 val spark: SparkSession = SparkSession.active
-import spark.implicits._
 
 spark.sparkContext.setJobDescription("Read input CSV")
-val rawCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
-val projected = rawCsv.select("iata_code", "envelope_id", "name", "latitude", "longitude", "date_from", "date_until", "comment", "country_code", "country_name", "continent_name", "timezone", "wiki_link")
-projected.where(col("location_type")==="A" and col("iata_code").isNotNull).createOrReplaceTempView("table")
-val airports = spark.sql("SELECT row_number() OVER (PARTITION BY iata_code ORDER BY envelope_id, date_from DESC) as r, * FROM table").where(col("r") === 1).drop("r")
+val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
 
 spark.sparkContext.setJobDescription("Format input CSV into delta (multiple files)")
-airports.repartition(4).write.format("delta").save(inputDir)
-val deltaTable = DeltaTable.forPath(inputDir)
+airports.repartition(5).write.format("delta").save(inputDir)
 
 def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
   // stats on parquet files added to the table
@@ -48,7 +43,7 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
 // show that files have data that is not well organized (ranges max/min values overlap for different files)
 showMaxMinStats(inputDir, "country_code", 0)
 
-spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 4 * 1024 * 1024L)
+spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
 DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code") 
 
 // show that files have data that is well organized now
