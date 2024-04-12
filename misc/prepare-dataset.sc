@@ -26,24 +26,12 @@ val spark: SparkSession = SparkSession.active
 
 spark.sparkContext.setJobDescription("Create input dataset")
 
-val rawCsv = spark.read.option("delimiter","^").option("header","true").csv(input)
-val projected = rawCsv.select("iata_code", "envelope_id", "name", "latitude", "longitude", "date_from", "date_until", "comment", "country_code", "country_name", "continent_name", "timezone", "wiki_link")
+val rawCsv = spark.read.option("delimiter","^").option("header","true").csv(input).withColumn("id", col("iata_code"))
+val projected = rawCsv.select("id", "iata_code", "envelope_id", "name", "latitude", "longitude", "date_from", "date_until", "comment", "country_code", "country_name", "continent_name", "timezone", "wiki_link")
 projected.where(col("location_type")==="A" and col("iata_code").isNotNull).createOrReplaceTempView("table")
 val airports = spark.sql("SELECT row_number() OVER (PARTITION BY iata_code ORDER BY envelope_id, date_from DESC) as r, * FROM table").where(col("r") === 1).drop("r")
 
 airports.coalesce(1).write.mode("overwrite").option("header", "true").csv(tmpFiltered)
 
 println(s"cp $tmpFiltered/*.csv $filtered")
-// e.g. cp /tmp/amadeus-spark-lab/sandbox/e1263c35-e920-4151-922e-4a1ad9d51f1c/filtered/*.csv /tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv
 
-import java.nio.file.{Files, Paths, StandardCopyOption}
-import scala.collection.JavaConverters._
-
-val sourceDir = Paths.get(tmpFiltered)
-val targetDir = Paths.get("/tmp/amadeus-spark-lab/datasets")
-
-Files.list(sourceDir).iterator().asScala.filter(_.toString.endsWith(".csv")).foreach { path =>
-  println(s"Moving $path to $targetDir")
-  val targetPath = targetDir.resolve(sourceDir.relativize(path))
-  Files.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING)
-}
