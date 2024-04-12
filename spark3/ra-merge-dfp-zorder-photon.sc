@@ -137,6 +137,12 @@ spark.sparkContext.setJobDescription("Merge dataframe - DFP")
 merge(buildDataframeToMerge("BWU", "dfp"))
 
 // Go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
-// and see the number of files actually read in the 'PhotonScan parquet' node
+// open the sub-queries and analyse those corresponding to the two joins (an inner and a left outer join).
+// Consider the 'PhotonScan parquet' node corresponding to the delta table.
 
-// FIXME: DFP not visible even on DBX with Photon !!!
+// FIXME: strange behavior, both with Photon and non-Photon cluster.
+// In both cases (DFP and NO DFP) the first join reads the whole table, while the second join
+// only reads the files containing the merge key.
+// In the Details we don't see "dynamic" and in the plan we don't see any dynamic query created.
+
+// TODO: try merge from Delta table to delta table.
