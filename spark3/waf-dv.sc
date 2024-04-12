@@ -29,6 +29,7 @@ import org.apache.spark.sql.functions.{col, lit}
 
 val spark: SparkSession = SparkSession.active
 
+spark.conf.set("spark.sql.adaptive.enabled", false)
 val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 
@@ -77,6 +78,9 @@ mergeOntoDeltaTable(DeltaTable.forPath(deltaWithoutDvDir), buildDataframeToMerge
 spark.sparkContext.setJobDescription("Merge with DV")
 mergeOntoDeltaTable(DeltaTable.forPath(deltaWithDvDir), buildDataframeToMerge("AR", "newcode1"))
 
+//buildDataframeToMerge("AR", "newcode1").createOrReplaceTempView("df2")
+//spark.sql(s"MERGE INTO delta.`${deltaWithDvDir}` as src USING df2 ON src.geoname_id = dfw.geoname_id WHEN MATCHED THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT *")
+
 // COMMAND ----------
 
 spark.sparkContext.setJobDescription("Show stats")
@@ -86,3 +90,5 @@ showDeltaTableHistory(DeltaTable.forPath(deltaWithoutDvDir))
 println("WITH DV")
 // small write amplification (MERGE keeps old files marking records to be ignored, and writes new small files with new records)
 showDeltaTableHistory(DeltaTable.forPath(deltaWithDvDir))
+
+
