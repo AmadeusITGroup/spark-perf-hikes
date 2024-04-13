@@ -27,13 +27,16 @@ The delta table is z-ordered on the merge key, in order to co-locate closer keys
 We assume that we are running on Databricks using Photon.
 
 First scenario: No DFP
-Here we see that the whole delta table is read for the merge.
+Here we see that the whole delta table is read for the merge, both when the dataframe comes from a delta table,
+and when it doesn't.
 
 Second scenario: DFP
-Here we see that only the delta table files containing the merge keys present in the small dataframe are read.
+Here we see that only the delta table files containing the merge keys present in the small dataframe are read
+in the first (inner) join corresponding to the merge, when the input dataframe comes from a delta table.
 
 In order to make sure that DFP can kick-in:
   - the small dataframe must be broadcastable
+  - the small dataframe must come from a delta table
   - spark.databricks.optimizer.deltaTableSizeThreshold should be small enough
   - spark.databricks.optimizer.deltaTableFilesThreshold should be small enough
   - spark.databricks.optimizer.dynamicFilePruning should be true
@@ -110,6 +113,13 @@ def buildDataframeToMerge(iataCode: String, newVal: String): DataFrame = {
   df
 }
 
+def buildDeltaTableToMerge(iataCode: String, newVal: String): DataFrame = {
+  val df = buildDataframeToMerge(iataCode, newVal)
+  val path = s"$tmpPath/batch_${iataCode}_${newVal}_${UUID.randomUUID()}"
+  df.write.mode("overwrite").format("delta").save(path)
+  DeltaTable.forPath(path).toDF
+}
+
 def merge(df: DataFrame): Unit = {
   val keyCols = Seq("iata_code")
   DeltaTable
@@ -118,13 +128,21 @@ def merge(df: DataFrame): Unit = {
     .whenMatched.updateAll.whenNotMatched.insertAll.execute()
 }
 
-// First scenario: No DFP
-spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "false")
-spark.sparkContext.setJobDescription("Merge dataframe - NO DFP")
-merge(buildDataframeToMerge("AAI", "no-dfp"))
+// First scenario
 
-// number of files after first merge
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "false")
+
+// No DFP (input not from delta)
+spark.sparkContext.setJobDescription("Merge dataframe - NO DFP - input not delta")
+merge(buildDataframeToMerge("AAI", "no-dfp-no-delta"))
 DeltaTable.forPath(deltaDir).detail.select("numFiles").show
+
+// No DFP (input from delta)
+spark.sparkContext.setJobDescription("Merge dataframe - NO DFP - input delta")
+merge(buildDeltaTableToMerge("AAI", "no-dfp-delta"))
+DeltaTable.forPath(deltaDir).detail.select("numFiles").show
+
+// Second scenario
 
 // Be sure to have the conditions to trigger DFP: DFP enabled, broadcast join, table/files thresholds
 spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
@@ -132,17 +150,26 @@ spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1000000000L)
 spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
 spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
 
-// Second scenario: DFP
+// DFP (input not from delta)
 spark.sparkContext.setJobDescription("Merge dataframe - DFP")
-merge(buildDataframeToMerge("BWU", "dfp"))
+merge(buildDataframeToMerge("BWU", "dfp-no-delta"))
+DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
-// Go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
+// DFP (input from delta)
+spark.sparkContext.setJobDescription("Merge dataframe - DFP")
+merge(buildDeltaTableToMerge("BWU", "dfp-delta"))
+
+// For each merge, go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
 // open the sub-queries and analyse those corresponding to the two joins (an inner and a left outer join).
 // Consider the 'PhotonScan parquet' node corresponding to the delta table.
 
-// FIXME: strange behavior, both with Photon and non-Photon cluster.
+// If using a DataFrame NOT COMING from a delta table, DFP will not kick-in.
 // In both cases (DFP and NO DFP) the first join reads the whole table, while the second join
-// only reads the files containing the merge key.
-// In the Details we don't see "dynamic" and in the plan we don't see any dynamic query created.
+// only reads the files containing the merge key, but this is not due to DFP.
+// Indeed, in the Details we don't see "dynamic" and in the plan we don't see any node creating a dynamic filter
+// as input to the 'PhotonScan' parquet node.
 
-// TODO: try merge from Delta table to delta table.
+// If using a DataFrame COMING from a delta table, DFP will kick-in for the first join, when enabled.
+// Indeed, in the Details we see "dynamicpruning" and in the plan we see the nodes creating a dynamic filter
+// as input to the 'PhotonScan' parquet node.
+
