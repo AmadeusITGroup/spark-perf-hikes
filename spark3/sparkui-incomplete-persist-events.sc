@@ -30,24 +30,19 @@ Some solutions:
 
 // COMMAND ----------
 
-import org.apache.spark.scheduler.StageInfo
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.scheduler._
 import spark.implicits._
 
 val spark: SparkSession = SparkSession.active
 
-object OurListener
-  case class JobMetrics(jobId: Int, jobName: String, jobGroup: String, sqlId: String, inputReadMb: Float, outputWriteMb: Float, shuffleReadMb: Float, shuffleWriteMb: Float, execCpuSecs: Float, spillMb: Float, stages: Int)
-  case class StageMetrics(inputReadMb: Float, outputWriteMb: Float, shuffleReadMb: Float, shuffleWriteMb: Float, execCpuSecs: Float, spillMb: Float)
-}
-
+case class JobMetrics(jobId: Int, jobDescription: String, jobGroup: String, sqlId: String, inputReadMb: Float, outputWriteMb: Float, shuffleReadMb: Float, shuffleWriteMb: Float, execCpuSecs: Float, spillMb: Float, stages: Int)
 class OurListener() extends SparkListener {
 
-  private case class JobRef(name: String, group: String, sqlId: String, stageIds: Seq[Int])
-  // Maps to keep job + stages information until job is completed
+  private case class JobRef(description: String, group: String, sqlId: String, stageIds: Seq[Int]) // job info only available in start event
+  // keep track of job descriptions and stage metrics until the end of the job
   private val jobIdToName = new java.util.concurrent.ConcurrentHashMap[Int, JobRef]()
-  private val stageIdToMetrics = new java.util.concurrent.ConcurrentHashMap[Int, StageMetrics]()
+  private val stageIdToStageInfo = new java.util.concurrent.ConcurrentHashMap[Int, StageInfo]()
 
   val jobMetrics = scala.collection.mutable.ListBuffer.empty[JobMetrics] // collected metrics for jobs
 
@@ -56,24 +51,24 @@ class OurListener() extends SparkListener {
 
   override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = { // merge start event with end event and metrics of stages
     val jobDesc = jobIdToName.get(jobEnd.jobId)
-    val stagesStats = jobDesc.stageIds.flatMap(s => Option(stageIdToMetrics.get(s)))
+    val stagesStats = jobDesc.stageIds.flatMap(s => Option(stageIdToStageInfo.get(s)))
     jobMetrics += (
-      JobMetrics(jobId = jobEnd.jobId, jobName = jobDesc.name, jobGroup = jobDesc.group, sqlId = jobDesc.sqlId,
-        inputReadMb = stagesStats.map(_.inputReadMb).sum,
-        outputWriteMb = stagesStats.map(_.outputWriteMb).sum,
-        shuffleReadMb = stagesStats.map(_.shuffleReadMb).sum,
-        shuffleWriteMb = stagesStats.map(_.shuffleWriteMb).sum,
-        execCpuSecs = stagesStats.map(_.execCpuSecs).sum,
-        spillMb = stagesStats.map(_.spillMb).sum,
+      JobMetrics(jobId = jobEnd.jobId, jobDescription = jobDesc.description, jobGroup = jobDesc.group, sqlId = jobDesc.sqlId,
+        inputReadMb = stagesStats.map(_.taskMetrics.inputMetrics.bytesRead.toFloat / 1024 / 1024).sum,
+        outputWriteMb = stagesStats.map(_.taskMetrics.outputMetrics.bytesWritten.toFloat / 1024 / 1024).sum,
+        shuffleReadMb = stagesStats.map(_.taskMetrics.shuffleReadMetrics.totalBytesRead.toFloat / 1024 / 1024).sum,
+        shuffleWriteMb = stagesStats.map(_.taskMetrics.shuffleWriteMetrics.bytesWritten.toFloat / 1024 / 1024).sum,
+        execCpuSecs = stagesStats.map(_.taskMetrics.executorCpuTime.toFloat / 1024 / 1024 / 1024).sum,
+        spillMb = stagesStats.map(_.taskMetrics.memoryBytesSpilled.toFloat / 1024 / 1024).sum,
         stages = jobDesc.stageIds.size
       )
     )
     jobIdToName.remove(jobEnd.jobId) // keep maps small
-    jobDesc.stageIds.foreach(s => stageIdToMetrics.remove(s)) // keep maps small
+    jobDesc.stageIds.foreach(s => stageIdToStageInfo.remove(s)) // keep maps small
   }
 
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = // keep stage metrics
-    stageIdToMetrics.put(stageCompleted.stageInfo.stageId, stageMetricsFrom(stageCompleted.stageInfo))
+    stageIdToStageInfo.put(stageCompleted.stageInfo.stageId, stageCompleted.stageInfo)
 
   private def jobRefFrom(stageInfos: Seq[StageInfo], properties: java.util.Properties): JobRef = {
     // Property names copied from org.apache.spark.context
@@ -81,18 +76,7 @@ class OurListener() extends SparkListener {
     val g = Option(properties.getProperty("spark.jobGroup.id")).map(_.replace('\n', ' ')).mkString
     val i = properties.getProperty("spark.sql.execution.id")
     val s = stageInfos.map(i => i.stageId)
-    JobRef(name = d, group = g, sqlId = i, stageIds = s)
-  }
-
-  private def stageMetricsFrom(s: StageInfo): StageMetrics = {
-    StageMetrics(
-      inputReadMb = s.taskMetrics.inputMetrics.bytesRead.toFloat / 1024 / 1024,
-      outputWriteMb = s.taskMetrics.outputMetrics.bytesWritten.toFloat / 1024 / 1024,
-      shuffleReadMb = s.taskMetrics.shuffleReadMetrics.totalBytesRead.toFloat / 1024 / 1024,
-      shuffleWriteMb = s.taskMetrics.shuffleWriteMetrics.bytesWritten.toFloat / 1024 / 1024,
-      execCpuSecs = s.taskMetrics.executorCpuTime.toFloat / 1024 / 1024 / 1024,
-      spillMb = s.taskMetrics.memoryBytesSpilled.toFloat / 1024 / 1024
-    )
+    JobRef(description = d, group = g, sqlId = i, stageIds = s)
   }
 }
 
@@ -104,7 +88,7 @@ val listener = new OurListener()
 spark.sparkContext.addSparkListener(listener)
 Range.inclusive(1, 30000, 10000) foreach { n => // 3 jobs will be launched, but we will see less in Spark UI because of spark.ui.retainedJobs
   spark.sparkContext.setJobGroup(groupId = s"Group $n", description = s"Write with repartition ${n}")
-  df.repartition(n).write.format("noop").mode("overwrite").save()
+  df.repartition(n).write.format("noop").mode("overwrite").save() // more repartition = more overhead = slower job
 }
 
 listener.jobMetrics.toDS.orderBy("execCpuSecs").show(false)
