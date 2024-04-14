@@ -29,38 +29,43 @@ and writing most of the data all the time, even if the input batch contains only
 
 The logic described above, does not strictly need to read all the versions of a key but only the last one,
 to set the is-last flag to false. Therefore we can partition the table T on the is-last flag, and use this
-in our join and merge logic.
+in our merge logic.
 
-First scenario: naive approach, without partitioning, high read and write amplification.
-Steps:
-- join new keys with the table (T) to get all history for that key
-- adjust the is last flags in the different versions
-- merge the patched rows (P) into the table
+Scenario:
+- a new key arrives (id = AAI, version = 11)
+- we compute a patch DF where the new version is set to is-last = true, and the old last version is set to is-last = false
+- we merge the patch DF into the table T
 
-Second scenario: optimized approach, with partitioning, low read and write amplification.
+Naive approach: without partitioning, high read and write amplification.
 Steps:
-- join new keys with the latest partition of the table (T) to get only the old last for each key
-- adjust the is last flags in the different versions
-- merge the patched rows (P) into the table, looking for matches only in the latest partition
+- compute the patch P
+- merge the patched rows P into the table T
+
+Optimized approach: with partitioning, low read and write amplification.
+Steps:
+- compute the patch P
+- merge the patched rows P into the table T, looking for matches only in the latest partition
   For each key, the merge will:
   - update the latest partition (dropping a row from it, and appending it to the other partition)
   - insert the new latest version of the key in the latest partition
 
-Merge query:
-```sql
-merge into T using P
-on P.id = T.id and P.version = T.version and T.is_last = true
-when matched then update set *
-when not matched then insert *
+  Merge query:
+  ```sql
+  merge into T using P
+  on P.id = T.id and P.version = T.version and T.is_last = true
+  when matched then update set *
+  when not matched then insert *
+  ```
 */
 
 // COMMAND ----------
 
 import java.util.UUID
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{col, lit, explode}
+import org.apache.spark.sql.functions.{col, lit, explode, desc, row_number}
 import org.apache.spark.sql.DataFrame
 import io.delta.tables.DeltaTable
+import org.apache.spark.sql.expressions.Window
 
 val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
@@ -90,6 +95,7 @@ optimize(notPartitionedTable)
 // Delta table partitioned by is-last
 spark.sparkContext.setJobDescription("Create delta table with partitions")
 tableDf.write.mode("overwrite").format("delta").partitionBy("is_last").save(partitionedTable)
+//spark.sql(s"ALTER TABLE delta.`$partitionedTable` SET TBLPROPERTIES (delta.enableDeletionVectors = true)") // enable DV
 optimize(partitionedTable)
 
 //// COMMAND ----------
@@ -100,48 +106,49 @@ DeltaTable.forPath(partitionedTable).detail.select("numFiles").show
 
 //// COMMAND ----------
 
-// prepare patch DF for the merge: create version 11 for a given key, set is-last to false in version 10
-// id, 10, false
-// id, 11, true
-def buildDataframeToMerge(id: String): DataFrame = {
-  val v10 = tableDf.where(col("id") === id and col("version") === 10)
-  val v10updated = v10.withColumn("is_last", lit(false))
-  val v11 = v10.withColumn("version", lit(11)).withColumn("is_last", lit(true))
-  val df = v10updated union v11
-  df
+def newVersion(id: String, v: Int): DataFrame = {
+  tableDf.filter(s"id = '$id' and version = 10").withColumn("version", lit(v)).withColumn("is_last", lit(true))
 }
 
-// prepare delta table with patch to merge
-// id, 10, false
-// id, 11, true
-def buildDeltaTableToMerge(id: String): DataFrame = {
-  val df = buildDataframeToMerge(id)
-  val path = s"$tmpPath/batch_${id}_${UUID.randomUUID()}"
+def toDelta(df: DataFrame): DataFrame = {
+  val path = s"$tmpPath/patch_${UUID.randomUUID()}"
   df.write.mode("overwrite").format("delta").save(path)
   DeltaTable.forPath(path).toDF
 }
 
-def merge(df: DataFrame, deltaDir: String, condition: String): Unit = {
-  DeltaTable
-    .forPath(deltaDir).as("T")
-    .merge(df.as("P"), condition)
-    .whenMatched.updateAll.whenNotMatched.insertAll.execute()
+// prepare patch DF for the merge: create version 11 for a given key with is-last = true, set is-last = false in version 10
+// id, 11, true
+// id, 10, false
+def buildDataframeToMergeSCD(id: String, deltaDir: String, condition: String = "1 = 1"): DataFrame = {
+  val keyVersions = DeltaTable.forPath(deltaDir).toDF.filter(s"id = '$id'").filter(condition)
+  val union = keyVersions union newVersion(id, 11)
+  val groupByKeyOrderByVersion = Window.partitionBy("id").orderBy(desc("version"))
+  val df = union.withColumn("r", row_number().over(groupByKeyOrderByVersion)).withColumn("is_last", col("r") === 1).drop("r")
+  toDelta(df)
 }
 
-def showStats(deltaDir: String): Unit = {
-  DeltaTable.forPath(deltaDir).history.where(col("version") === 2).
-    select("operationMetrics.numTargetFilesAdded", "operationMetrics.numTargetRowsInserted", "operationMetrics.numTargetRowsUpdated", "operationMetrics.numTargetFilesRemoved").
-    show(false)
+def merge(df: DataFrame, deltaDir: String, condition: String): Unit = {
+  DeltaTable.forPath(deltaDir).as("T").merge(df.as("P"), condition).whenMatched.updateAll.whenNotMatched.insertAll.execute()
+}
+
+def showLatestStats(deltaDir: String): Unit = {
+  val cols = Seq("operationMetrics.numTargetFilesAdded", "operationMetrics.numTargetRowsInserted", "operationMetrics.numTargetRowsUpdated", "operationMetrics.numTargetFilesRemoved", "operationMetrics.numTargetDeletionVectorsAdded")
+  val latestVersion = DeltaTable.forPath(partitionedTable).history.selectExpr("max(version)").collect.head.getLong(0)
+  DeltaTable.forPath(deltaDir).history.where(col("version") === latestVersion).select(cols.map(col): _*).show(false)
 }
 
 // First scenario: No partitions
+spark.sparkContext.setJobDescription("Build patch DF - no partitions")
+val patchNoPart = buildDataframeToMergeSCD("AAI", notPartitionedTable)
 spark.sparkContext.setJobDescription("Merge - no partitions")
-merge(buildDeltaTableToMerge("AAI"), notPartitionedTable, "T.id == P.id and T.version = P.version")
+merge(patchNoPart, notPartitionedTable, "T.id == P.id and T.version = P.version")
 
 // Second scenario: Partitions
+spark.sparkContext.setJobDescription("Build patch DF - partitions")
+val patchPart = buildDataframeToMergeSCD("AAI", partitionedTable, "is_last = true")
 spark.sparkContext.setJobDescription("Merge - partitions")
-merge(buildDeltaTableToMerge("AAI"), partitionedTable, "T.id == P.id and T.version = P.version and T.is_last = true")
-showStats(partitionedTable)
+merge(patchPart, partitionedTable, "T.id == P.id and T.version = P.version and T.is_last = true")
+showLatestStats(partitionedTable)
 
 // Go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
 // open the sub-queries and analyse those corresponding to the first join.
@@ -150,11 +157,15 @@ showStats(partitionedTable)
 
 // Things to observe in the second scenario:
 // - only the latest partition is read (in spark UI)
-// - in the latest partition one file is deleted and one is appended (the new version)
-// - in the historical partition one file is appended (the old version)
+// - in the latest partition one file is deleted (old latest version) and one is appended (new latest version)
+// - in the historical partition one file is appended (the old latest version)
 
 // In particular note this in the delta table history:
 //"numTargetFilesAdded": "2"
 //"numTargetRowsInserted": "1"
 //"numTargetRowsUpdated": "1"
 //"numTargetFilesRemoved": "1"
+
+// If DV enabled:
+// "numTargetDeletionVectorsAdded": "1"
+// "numTargetFilesRemoved": "0"

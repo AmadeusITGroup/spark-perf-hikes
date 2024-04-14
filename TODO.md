@@ -13,8 +13,11 @@
     - [ ] Handle the fact that the versions used by the user are/are not the same as the one used to test the script
         - e.g. parameter to have warning or failure in case of wrong versions
 - [ ] Extract common methods in a "library" (e.g. showMaxMinStats)
+
 - [ ] Push filtered airports dataset somewhere public and use it in the snippets 
 - [ ] Rename snippet file names to comply with convention problem-solution
+- [ ] Address different Spark versions
+- [ ] Rename file name to comply with convention problem-solution
 - [ ] Address different Spark versions
 - [ ] All needed snippets are present
 - [ ] For each snippet we have a correct name, documentation, and it works
