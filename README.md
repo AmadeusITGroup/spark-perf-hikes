@@ -98,7 +98,7 @@ Each snippet is supposed to have the same structure of the following example:
 // COMMAND ----------
 
 /*
-<brief description of problem and solution high level>
+<brief description of problem and a possible solution high level>
 
 # Symptom
 <problem symptoms>

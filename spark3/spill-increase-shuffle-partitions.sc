@@ -48,7 +48,6 @@ class SpillListener extends org.apache.spark.scheduler.SparkListener {
 val spillListener = new SpillListener()
 spark.sparkContext.addSparkListener(spillListener)
 
-// Disable AQE to have a single job
 spark.conf.set("spark.sql.adaptive.enabled", false)
 
 spark.sparkContext.setJobDescription("Prepare input data")
