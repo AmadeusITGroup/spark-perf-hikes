@@ -63,6 +63,9 @@ val spark: SparkSession = SparkSession.active
 
 // COMMAND ----------
 
+// Keep AQE on, to avoid having to many files after merge
+spark.conf.set("spark.sql.adaptive.enabled", true)
+
 // Destination delta table
 spark.sparkContext.setJobDescription("Create delta table")
 val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
@@ -151,12 +154,12 @@ spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
 spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
 
 // DFP (input not from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - DFP")
+spark.sparkContext.setJobDescription("Merge dataframe - DFP - input not delta")
 merge(buildDataframeToMerge("BWU", "dfp-no-delta"))
 DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // DFP (input from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - DFP")
+spark.sparkContext.setJobDescription("Merge dataframe - DFP - input delta")
 merge(buildDeltaTableToMerge("BWU", "dfp-delta"))
 
 // For each merge, go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
