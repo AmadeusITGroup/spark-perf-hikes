@@ -10,6 +10,7 @@ amplification, and how to improve the situation by using Merge-on-Read strategy 
 
 References:
 - https://docs.delta.io/3.1.0/delta-deletion-vectors.html
+- https://docs.delta.io/3.1.0/delta-utility.html
 
 # Symptom
 The volume of data being rewritten in a Delta Table on a MERGE is way above the volume of the records expected to be updated / added.
@@ -65,7 +66,13 @@ def mergeOntoDeltaTable(target: DeltaTable, df: DataFrame) = {
 def showMergeStats(target: DeltaTable): Unit = {
   target.history().select("version", "operation",
     "operationMetrics.numTargetFilesAdded", "operationMetrics.numTargetFilesRemoved",
-    "operationMetrics.numTargetBytesAdded", "operationMetrics.numTargetBytesRemoved"
+    "operationMetrics.numTargetBytesAdded", "operationMetrics.numTargetBytesRemoved",
+    "operationMetrics.numSourceRows"/* number of rows in the source dataframe */, 
+    "operationMetrics.numOutputRows" /* total number of rows written */
+    //"operationMetrics.numTargetRowsInserted", // output rows in detail
+    //"operationMetrics.numTargetRowsUpdated", 
+    //"operationMetrics.numTargetRowsDeleted", 
+    //"operationMetrics.numTargetRowsCopied", 
   ).where(col("OPERATION") === "MERGE").show(false)
 }
 
@@ -78,13 +85,15 @@ spark.conf.set("spark.sql.shuffle.partitions", 3)
 // WITHOUT DV
 spark.sparkContext.setJobDescription("MERGE WITHOUT DV")
 mergeOntoDeltaTable(DeltaTable.forPath(deltaWithoutDvDir), buildDataframeToMerge("SF", "newcomment"))
-// large write amplification (MERGE deletes all old files and writes new large files, as many as shuffle.partitions)
+// large write amplification (MERGE deletes all old files and writes new large files, as many as shuffle.partitions,
+// few source rows, many output rows written)
 showMergeStats(DeltaTable.forPath(deltaWithoutDvDir))
 
 // WITH DV
 spark.sparkContext.setJobDescription("MERGE WITH DV")
 mergeOntoDeltaTable(DeltaTable.forPath(deltaWithDvDir), buildDataframeToMerge("SF", "newcomment"))
-// small write amplification (MERGE keeps old files marking records to be ignored, and writes new small file with the new records)
+// small write amplification (MERGE keeps old files marking records to be ignored, and writes new small file with the new records
+// few source rows, and few output rows written)
 showMergeStats(DeltaTable.forPath(deltaWithDvDir))
 
 // COMMAND ----------
