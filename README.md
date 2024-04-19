@@ -2,15 +2,22 @@
 
 This module allows to launch snippets on Spark 3, where each contains:
 
-- a scala snippet
+- a scala snippet :  piece of code you can run 
 - the dependencies
 - the spark settings
 
 ## Getting started
 
+The following documentation has been tested on computers runing a Linux like OS, where [Apache Spark 3.5.1](https://spark.apache.org/downloads.html), as well as Java are already installed.
+
+
+
 ### A. Initialize the environment
 
 The very first time you use the project you need to install it. 
+
+
+
 
 0. Configure the Databricks cli on your machine.
 
@@ -46,16 +53,15 @@ spark-run-local <snippet.sc>
 
 Some existing snippets:
 
-- Spill
-- Thread Contention
-- Partition Pruning
-- File Pruning
-- Z-Order
-- Dynamic File Pruning
-- Deletion vectors
-- ...
+- [Spill](spark3%2Fspill-increase-shuffle-partitions.sc)
+- [Thread Contention](spark3%2Fthread-contention.sc)
+- [Partition Pruning](spark3%2Fscd-type-2-merge-partition-pruning.sc)
+- [Delta table Z-Ordering](spark3%2Fzorder1.sc)
+- Dynamic File Pruning [in join with zorder](spark3%2Fra-join-dfp-zorder.sc) & [in merge with zorder and photon](spark3%2Fra-merge-dfp-zorder-photon.sc)
+- Write amplification & [deletion vectors](spark3%2Fwrite-amplification-deletion-vector.sc)
+- [Spark UI retention limits](spark3%2Fsparkui-incomplete-persist-events.sc)
 
-#### B.2 Launch a snippet on Databricks
+#### B.2 Launch a snippet _on Databricks_
 
 First copy the snippet you want on your Databricks workspace:
 
@@ -63,7 +69,7 @@ First copy the snippet you want on your Databricks workspace:
 spark-import-databricks <snippet.sc> <profile> <destination-folder> <extra-args: e.g., --overwrite>
 ```
 
-### C. Write your snippet
+### C. Write your own snippet
 
 #### IDE setup
 
@@ -110,5 +116,7 @@ Each snippet is supposed to have the same structure of the following example:
 // COMMAND ----------
 
 ... scala code corresponding to the snippet ...
+
+
 
 ```

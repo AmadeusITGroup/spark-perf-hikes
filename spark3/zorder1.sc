@@ -2,12 +2,30 @@
 // Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 // Databricks: ...
 
+/*
+This snippet demonstrates the benefits of DeltaTable optimization executeZOrderBy:
+it starts by preparing a delta table with 5 partitions based on test dataset  optd_por_public_filtered, then
+shows how optimization with ZOrder can serve specific usage.
+
+References:
+ - https://docs.delta.io/2.0.0/optimizations-oss.html#z-ordering-multi-dimensional-clustering
+
+# Symptom
+If not particulary specified, data are heterogeneously distributed within files in Delta tables.
+
+
+# Explanation
+Data stored in Delta tables can be optimized with usage centric settings.
+
+*/
 import java.util.UUID
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.SparkSession
 
 val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
+
+//inputDir will store data as DeltaTable.
 val inputDir = tmpPath + "/input"
 
 val spark: SparkSession = SparkSession.active
@@ -26,6 +44,7 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
       .add("numRecords", IntegerType, true)
       .add("minValues", MapType(StringType, StringType), true)
       .add("maxValues", MapType(StringType, StringType), true)
+
   val df = spark.read.json(s"$tablePath/_delta_log/*${commit}.json")
     .withColumn("commit_json_name", input_file_name())
     .withColumn("add_stats", from_json(col("add.stats"), statsSchema))
@@ -44,6 +63,7 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
 showMaxMinStats(inputDir, "country_code", 0)
 
 spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
+//Exectute the optimize command
 DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code") 
 
 // show that files have data that is well organized now

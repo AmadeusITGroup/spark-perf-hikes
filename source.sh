@@ -21,6 +21,7 @@ function spark-init-datasets-local-tmp() {
 
 function spark-local-check-version() {
   local expected_version=$1
+  # shellcheck disable=SC2046
   local spark_path=$(readlink -e $(which spark-shell))
   if [[ "${spark_path}" == *"$expected_version"* ]] ;then
     echo "Version of spark seems OK ($spark_path vs required $expected_version)"
@@ -35,7 +36,7 @@ function spark-run-local() {
   local version=$(cat $script | sed -n 's#// Spark: ##gp')
   spark-init-datasets-local-tmp
   spark-local-check-version $version
-  cat $script - | spark-shell $args
+  cat $script - | spark-shell  $args
 }
 
 function spark-import-databricks() {

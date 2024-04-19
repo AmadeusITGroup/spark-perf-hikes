@@ -5,7 +5,8 @@
 // COMMAND ----------
 
 /*
-This example shows how to identify spill in a stage, and measure it. It also shows just one way to work it around by increasing the number of shuffle partitions. 
+This example shows how to identify spill in a stage, and measure it.
+It also shows just one way to work it around by increasing the number of shuffle partitions.
 
 References: 
 - https://medium.com/road-to-data-engineering/spark-performance-optimization-series-2-spill-685126e9d21f
