@@ -27,13 +27,13 @@ and writing most of the data all the time, even if the input batch contains only
 
 # Explanation
 
-The logic described above, does not strictly need to read all the versions of a key but only the last one,
-to set the is-last flag to false. Therefore we can partition the table T on the is-last flag, and use this
-in our merge logic.
+The history consolidation logic described above, does not strictly need to read all the versions of a key
+but only the last one, to set the is-last flag to false. Therefore we can partition the table T on the is-last flag,
+and use this in our merge logic.
 
 Scenario:
 - a new key arrives (id = AAI, version = 11)
-- we compute a patch DF where the new version is set to is-last = true, and the old last version is set to is-last = false
+- we compute a patch DF P where the new version is set to is-last = true, and the old last version is set to is-last = false
 - we merge the patch DF into the table T
 
 Naive approach: without partitioning, high read and write amplification.
@@ -95,6 +95,7 @@ optimize(notPartitionedTable)
 // Delta table partitioned by is-last
 spark.sparkContext.setJobDescription("Create delta table with partitions")
 tableDf.write.mode("overwrite").format("delta").partitionBy("is_last").save(partitionedTable)
+// Uncomment the line below to enable Deletion Vectors (DV)
 //spark.sql(s"ALTER TABLE delta.`$partitionedTable` SET TBLPROPERTIES (delta.enableDeletionVectors = true)") // enable DV
 optimize(partitionedTable)
 
@@ -132,9 +133,10 @@ def merge(df: DataFrame, deltaDir: String, condition: String): Unit = {
 }
 
 def showLatestStats(deltaDir: String): Unit = {
-  val cols = Seq("operationMetrics.numTargetFilesAdded", "operationMetrics.numTargetRowsInserted", "operationMetrics.numTargetRowsUpdated", "operationMetrics.numTargetFilesRemoved", "operationMetrics.numTargetDeletionVectorsAdded")
-  val latestVersion = DeltaTable.forPath(partitionedTable).history.selectExpr("max(version)").collect.head.getLong(0)
-  DeltaTable.forPath(deltaDir).history.where(col("version") === latestVersion).select(cols.map(col): _*).show(false)
+  val metrics = Seq("numTargetFilesAdded", "numTargetRowsInserted", "numTargetRowsUpdated", "numTargetFilesRemoved", "numTargetDeletionVectorsAdded")
+  val cols = metrics.map(m => col(s"operationMetrics.$m"))
+  val latestVersion = DeltaTable.forPath(deltaDir).history.selectExpr("max(version)").collect.head.getLong(0)
+  DeltaTable.forPath(deltaDir).history.where(col("version") === latestVersion).select(cols: _*).show(false)
 }
 
 // First scenario: No partitions
@@ -142,6 +144,7 @@ spark.sparkContext.setJobDescription("Build patch DF - no partitions")
 val patchNoPart = buildDataframeToMergeSCD("AAI", notPartitionedTable)
 spark.sparkContext.setJobDescription("Merge - no partitions")
 merge(patchNoPart, notPartitionedTable, "T.id == P.id and T.version = P.version")
+showLatestStats(notPartitionedTable)
 
 // Second scenario: Partitions
 spark.sparkContext.setJobDescription("Build patch DF - partitions")
@@ -150,22 +153,24 @@ spark.sparkContext.setJobDescription("Merge - partitions")
 merge(patchPart, partitionedTable, "T.id == P.id and T.version = P.version and T.is_last = true")
 showLatestStats(partitionedTable)
 
-// Go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
-// open the sub-queries and analyse those corresponding to the first join.
-// In the Scan parquet node for the table T you will see that all the files are read in the first scenario,
-// while only the files of the latest partition are read in the second scenario (only 1 partition read).
+/**
+Go to the Spark UI, look for the SQL query corresponding to the Merge,
+open the sub-queries and analyse those corresponding to the first join (inner join).
+In the Scan parquet node for the table T you will see that all the files are read in the first scenario,
+while only the files of the latest partition are read in the second scenario (only 1 partition read).
 
-// Things to observe in the second scenario:
-// - only the latest partition is read (in spark UI)
-// - in the latest partition one file is deleted (old latest version) and one is appended (new latest version)
-// - in the historical partition one file is appended (the old latest version)
+Things to observe in the second scenario:
+- only the latest partition is read (in spark UI)
+- in the latest partition one file is deleted (old latest version) and one is appended (new latest version)
+- in the historical partition one file is appended (the old latest version)
 
-// In particular note this in the delta table history:
-//"numTargetFilesAdded": "2"
-//"numTargetRowsInserted": "1"
-//"numTargetRowsUpdated": "1"
-//"numTargetFilesRemoved": "1"
+In particular note this in the delta table history:
+"numTargetFilesAdded": "2"
+"numTargetRowsInserted": "1"
+"numTargetRowsUpdated": "1"
+"numTargetFilesRemoved": "1"
 
-// If DV enabled:
-// "numTargetDeletionVectorsAdded": "1"
-// "numTargetFilesRemoved": "0"
+If DV enabled:
+"numTargetDeletionVectorsAdded": "1"
+"numTargetFilesRemoved": "0"
+*/
