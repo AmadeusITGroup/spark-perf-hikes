@@ -1,23 +1,21 @@
 # README
 
-This module allows to launch snippets on Spark 3, where each contains:
+This module allows to launch snippets on Spark 3. 
 
-- a scala snippet :  piece of code you can run 
+Each snippet contains:
+- a scala code you can run
+- the documentation
 - the dependencies
 - the spark settings
 
 ## Getting started
 
-The following documentation has been tested on computers runing a Linux like OS, where [Apache Spark 3.5.1](https://spark.apache.org/downloads.html), as well as Java are already installed.
-
-
+The following documentation has been tested on computers running a Linux like OS, 
+where [Apache Spark 3.5.1](https://spark.apache.org/downloads.html), as well as Java are already installed.
 
 ### A. Initialize the environment
 
-The very first time you use the project you need to install it. 
-
-
-
+The very first time you use the project you need to install it.
 
 0. Configure the Databricks cli on your machine.
 
@@ -56,10 +54,12 @@ Some existing snippets:
 - [Spill](spark3%2Fspill-increase-shuffle-partitions.sc)
 - [Thread Contention](spark3%2Fthread-contention.sc)
 - [Partition Pruning](spark3%2Fscd-type-2-merge-partition-pruning.sc)
-- [Delta table Z-Ordering](spark3%2Fzorder1.sc)
-- Dynamic File Pruning [in join with zorder](spark3%2Fra-join-dfp-zorder.sc) & [in merge with zorder and photon](spark3%2Fra-merge-dfp-zorder-photon.sc)
+- [Delta table Z-Ordering and file pruning](spark3%2Fread-amplification-zorder-fp.sc)
+- Dynamic File Pruning [in join with zorder](spark3%2Fread-amplification-join-dfp-zorder.sc) & [in merge with zorder and photon](spark3%2Fread-amplification-merge-dfp-zorder-photon.sc)
 - Write amplification & [deletion vectors](spark3%2Fwrite-amplification-deletion-vector.sc)
 - [Spark UI retention limits](spark3%2Fsparkui-incomplete-persist-events.sc)
+
+Note: Dynamic File Pruning and File Pruning examples only work as intended on Databricks.
 
 #### B.2 Launch a snippet _on Databricks_
 

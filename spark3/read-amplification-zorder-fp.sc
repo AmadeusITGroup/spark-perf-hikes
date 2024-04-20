@@ -59,8 +59,16 @@ def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
   df.show(false)
 }
 
+def selectQuery(tablePath: String, tag: String): Unit = {
+  spark.sparkContext.setJobDescription(s"Select query = $tag")
+  val df = DeltaTable.forPath(tablePath).toDF
+  val c = df.where(s"country_code = 'IT'").count()
+  println(c)
+}
+
 // show that files have data that is not well organized (ranges max/min values overlap for different files)
 showMaxMinStats(inputDir, "country_code", 0)
+selectQuery(inputDir, "NO ZORDER")
 
 spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
 //Exectute the optimize command
@@ -68,3 +76,7 @@ DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code")
 
 // show that files have data that is well organized now
 showMaxMinStats(inputDir, "country_code", 1)
+selectQuery(inputDir, "ZORDER")
+
+// Check the Databricks Spark UI to see the amount of files read for the same select query before and after z-order.
+// TODO: it works also in local, WHY? It's supposed to work only with delta on Databricks (cf. https://docs.databricks.com/en/delta/data-skipping.html)
