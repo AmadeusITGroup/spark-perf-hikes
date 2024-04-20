@@ -32,7 +32,7 @@ but only the last one, to set the is-last flag to false. Therefore we can partit
 and use this in our merge logic.
 
 Scenario:
-- a new key arrives (id = AAI, version = 11)
+- a new version for an existing key arrives (id = AAI)
 - we compute a patch DF P where the new version is set to is-last = true, and the old last version is set to is-last = false
 - we merge the patch DF into the table T
 
@@ -71,6 +71,7 @@ val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
 val notPartitionedTable = tmpPath + "/notPartitioned"
 val partitionedTable = tmpPath + "/partitioned"
+val numVersions = 100
 
 val spark: SparkSession = SparkSession.active
 
@@ -82,10 +83,10 @@ def optimize(deltaDir: String): Unit = {
   DeltaTable.forPath(deltaDir).optimize().executeZOrderBy("id")
 }
 
-// Prepare table content with 10 versions for each key, only version 10 has is_last = true
+// Prepare table content with 'numVersions' versions for each key, only the last version has is_last = true
 val airports = spark.read.option("delimiter", "^").option("header", "true").csv(input)
-val versioned = airports.withColumn("versions", lit((1 to 10).toArray)).withColumn("version", explode(col("versions"))).drop("versions")
-val tableDf = versioned.withColumn("is_last", col("version") === 10)
+val versioned = airports.withColumn("versions", lit((1 to numVersions).toArray)).withColumn("version", explode(col("versions"))).drop("versions")
+val tableDf = versioned.withColumn("is_last", col("version") === numVersions)
 
 // Delta table without partitions
 spark.sparkContext.setJobDescription("Create delta table without partitions")
@@ -108,7 +109,7 @@ DeltaTable.forPath(partitionedTable).detail.select("numFiles").show
 //// COMMAND ----------
 
 def newVersion(id: String, v: Int): DataFrame = {
-  tableDf.filter(s"id = '$id' and version = 10").withColumn("version", lit(v)).withColumn("is_last", lit(true))
+  tableDf.filter(s"id = '$id' and version = $numVersions").withColumn("version", lit(v)).withColumn("is_last", lit(true))
 }
 
 def toDelta(df: DataFrame): DataFrame = {
@@ -117,12 +118,13 @@ def toDelta(df: DataFrame): DataFrame = {
   DeltaTable.forPath(path).toDF
 }
 
-// prepare patch DF for the merge: create version 11 for a given key with is-last = true, set is-last = false in version 10
-// id, 11, true
-// id, 10, false
+// Prepare patch P for the merge.
+// Create a new version for a given key, setting is-last = true; set is-last = false in the previous last version.
+// id, 101, true
+// id, 100, false
 def buildDataframeToMergeSCD(id: String, deltaDir: String, condition: String = "1 = 1"): DataFrame = {
   val keyVersions = DeltaTable.forPath(deltaDir).toDF.filter(s"id = '$id'").filter(condition)
-  val union = keyVersions union newVersion(id, 11)
+  val union = keyVersions union newVersion(id, numVersions + 1)
   val groupByKeyOrderByVersion = Window.partitionBy("id").orderBy(desc("version"))
   val df = union.withColumn("r", row_number().over(groupByKeyOrderByVersion)).withColumn("is_last", col("r") === 1).drop("r")
   toDelta(df)
