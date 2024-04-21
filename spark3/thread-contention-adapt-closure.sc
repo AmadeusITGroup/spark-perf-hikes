@@ -18,6 +18,10 @@ The UDF `threadLockOperation` uses a concurrency lock on a one-per JVM object to
 This means that in a Spark stage that computes the values for such UDF, multiple tasks (running on different threads of the JVM)
 will be contending for the same lock, and only one will prevail at a time.
 As a consequence, the parallelism of the stage will be negatively limited.
+
+To solve the issue there are alternatives: 
+- use built-in SQL functions whenever possible (all of them are free of thread contention, just watch out for the function 'reflect')
+- fix your closure/udf so that it avoids going through the synchronized code section
 */
 
 // COMMAND ----------
