@@ -1,4 +1,4 @@
-// Spark: 3.4.2
+// Spark: 3.5.1
 // Local: --executor-memory 1G --driver-memory 1G --executor-cores 4
 // Databricks: ...
 
@@ -36,11 +36,11 @@ val threadLockOperation = udf { (s: String) =>
     s"op($s($t))"
   }                    // comment this line out to remove the thread contention!
 }
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
+val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(input).cache()
 // COMMAND ----------
 spark.sparkContext.setJobDescription("Dataframe save with UDF with thread contention")
 val iterations = 10000
 Range.inclusive(1, iterations).foreach { _ =>
-  df.select(threadLockOperation(col("asciiname"))).write.format("noop").mode("overwrite").save()
+  df.select(threadLockOperation(col("name"))).write.format("noop").mode("overwrite").save()
 }
