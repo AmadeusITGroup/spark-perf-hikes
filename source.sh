@@ -54,6 +54,7 @@ function spark-init-datasets-databricks() {
   local profile=$1
   spark-init-datasets-local
   local src=$spark_sandbox_tmp_path/datasets/optd_por_public.csv
+  databricks fs mkdir dbfs:/$(dirname $src) --profile $profile
   databricks fs cp $src dbfs:/$src --profile $profile
 }
 
@@ -61,5 +62,6 @@ function spark-init-datasets-databricks-tmp() {
   local profile=$1
   spark-init-datasets-local
   local src=$spark_sandbox_tmp_path/datasets/optd_por_public_filtered.csv
+  databricks fs mkdir dbfs:/$(dirname $src) --profile $profile
   databricks fs cp $src dbfs:/$src --profile $profile
 }
