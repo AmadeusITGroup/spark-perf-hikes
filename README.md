@@ -24,7 +24,7 @@ The very first time you use the project you need to install it.
    - install Databricks cli versions 0.205 and above (cf. https://docs.databricks.com/en/dev-tools/cli/tutorial.html)
    - define the profile correctly in your `~/.databrickscfg` file for authentication.
 
-1. Add the following to your `.bashrc` file: 
+1. Add the following to your `~/.bashrc` ( ~/.zshrc for MacOS ) file: 
 
 ```bash
 export SSCE_PATH=<this-path>
@@ -52,7 +52,7 @@ spark-run-local <snippet.sc>
 Some existing snippets:
 
 - [Spill](spark3%2Fspill-increase-shuffle-partitions.sc)
-- [Thread Contention](spark3%2Fthread-contention.sc)
+- [Thread Contention](spark3%2Fthread-contention-adapt-closure.sc)
 - [Partition Pruning](spark3%2Fscd-type-2-merge-partition-pruning.sc)
 - [Delta table Z-Ordering and file pruning](spark3%2Fread-amplification-zorder-fp.sc)
 - Dynamic File Pruning [in join with zorder](spark3%2Fread-amplification-join-dfp-zorder.sc) & [in merge with zorder and photon](spark3%2Fread-amplification-merge-dfp-zorder-photon.sc)
