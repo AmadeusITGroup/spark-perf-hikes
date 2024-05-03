@@ -1,5 +1,5 @@
 // Spark: 3.5.1
-// Local: --executor-memory 1G --driver-memory 1G --executor-cores 1 --master 'local[2]' --conf spark.ui.retainedJobs=2
+// Local: --driver-memory 1G --master 'local[2]' --conf spark.ui.retainedJobs=2
 // Databricks: ...
 
 // COMMAND ----------

@@ -1,5 +1,5 @@
 // Spark: 3.5.1
-// Local: --executor-memory 1G --driver-memory 1G --executor-cores 4
+// Local: --master 'local[4]' --driver-memory 1G
 // Databricks: ...
 
 // COMMAND ----------
