@@ -43,21 +43,18 @@ val airports = spark.read.option("delimiter","^").option("header","true").csv(pa
 
 ## Getting started
 
-The following documentation has been tested on computers running a Linux like OS, 
-where [Apache Spark 3.5.1](https://spark.apache.org/downloads.html), as well as Java are already installed.
-
 ### Setup the environment
 
 The very first time you use the project you need to install it.
 
-0. Configure the Databricks cli on your machine.
+1. [optional] Configure the Databricks cli on your machine.
 
    This step is optional, and you have to do it only if you want to run the snippets on Databricks.
    Be sure to:
    - install Databricks cli versions 0.205 and above (cf. https://docs.databricks.com/en/dev-tools/cli/tutorial.html)
    - define the profile correctly in your `~/.databrickscfg` file for authentication.
 
-1. Add the following to your `~/.bashrc` ( ~/.zshrc for MacOS ) file: 
+2. Add the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
 
 ```bash
 export PERF_HIKES_PATH=<this-path>
@@ -65,16 +62,18 @@ export PATH=$PATH:<spark-shell-directory>
 source $PERF_HIKES_PATH/source.sh # to define the aliases
 ```
 
-2. Then set up some sample datasets:
+3. Then set up some sample datasets:
 
 ```
 spark-init-datasets-local
 spark-init-datasets-databricks <profile>
 ```
 
-3. Make sure `spark-shell` is in your `PATH`
+4. Make sure `spark-shell` is in your `PATH`
 
-
+You can install Apache Spark and the Spark Shell by following the instructions on the [Apache Spark website](https://spark.apache.org/downloads.html).
+If you want to reproduce as close as possible the expected behavior of each snippet,
+you should install the same version of Spark as the one mentioned in the snippet (at least same major.minor).
 
 ### Launch a snippet
 
