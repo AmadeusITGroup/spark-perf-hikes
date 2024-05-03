@@ -17,10 +17,10 @@ import java.util.UUID
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.col
 
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public.csv"
-val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
+val input = "/tmp/perf-hikes/datasets/optd_por_public.csv"
+val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 val tmpFiltered = tmpPath + "/filtered"
-val filtered = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
+val filtered = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 
 val spark: SparkSession = SparkSession.active
 

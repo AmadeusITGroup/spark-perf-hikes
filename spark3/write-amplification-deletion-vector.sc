@@ -33,8 +33,8 @@ import org.apache.spark.sql.functions.{col, lit}
 val spark: SparkSession = SparkSession.active
 
 spark.conf.set("spark.sql.adaptive.enabled", false)
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
-val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
+val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
+val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 
 spark.sparkContext.setJobDescription("Read CSV")
 val airports = spark.read.option("delimiter","^").option("header","true").csv(input)

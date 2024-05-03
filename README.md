@@ -27,9 +27,9 @@ The very first time you use the project you need to install it.
 1. Add the following to your `~/.bashrc` ( ~/.zshrc for MacOS ) file: 
 
 ```bash
-export SSCE_PATH=<this-path>
+export PERF_HIKES_PATH=<this-path>
 export PATH=$PATH:<spark-shell-directory>
-source $SSCE_PATH/source.sh # to define the aliases
+source $PERF_HIKES_PATH/source.sh # to define the aliases
 ```
 
 2. Then set up some sample datasets:
@@ -86,7 +86,7 @@ val deps = Seq(
 )
 lazy val root = (project in file("."))
   .settings(
-    name := "ssce-spark-sandbox",
+    name := "perf-hikes",
     scalaVersion := "2.12.13",
     libraryDependencies := deps
   )

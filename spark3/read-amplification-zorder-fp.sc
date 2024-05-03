@@ -22,8 +22,8 @@ import java.util.UUID
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.SparkSession
 
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
-val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
+val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
+val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 
 //inputDir will store data as DeltaTable.
 val inputDir = tmpPath + "/input"

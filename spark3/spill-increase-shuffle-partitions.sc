@@ -52,8 +52,8 @@ spark.sparkContext.addSparkListener(spillListener)
 spark.conf.set("spark.sql.adaptive.enabled", false)
 
 spark.sparkContext.setJobDescription("Prepare input data")
-val inputPath = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
-val outputPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
+val inputPath = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
+val outputPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(inputPath)
 (1 to 300).map(i => df.withColumn("extra", lit(i))).reduce(_ union _).write.format("parquet").save(outputPath)
 val dfs = spark.read.format("parquet").load(outputPath)

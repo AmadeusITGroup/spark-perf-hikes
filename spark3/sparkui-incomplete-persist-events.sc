@@ -82,7 +82,7 @@ class OurListener() extends SparkListener {
 
 spark.conf.set("spark.sql.adaptive.enabled", false) // make executions more predicatable
 
-val inputPath = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
+val inputPath = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(inputPath)
 val listener = new OurListener()
 spark.sparkContext.addSparkListener(listener)

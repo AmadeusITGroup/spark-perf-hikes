@@ -36,7 +36,7 @@ val threadLockOperation = udf { (s: String) =>
     s"op($s($t))"
   }                    // comment this line out to remove the thread contention!
 }
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
+val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(input).cache()
 // COMMAND ----------
 spark.sparkContext.setJobDescription("Dataframe save with UDF with thread contention")

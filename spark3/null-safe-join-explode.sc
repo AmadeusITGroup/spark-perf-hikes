@@ -19,7 +19,7 @@ The join takes place with null-safe-equality (null==null gives true, null==X giv
 import java.util.UUID
 import org.apache.spark.sql.functions._
 import spark.implicits._
-val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
+val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 spark.conf.set("spark.sql.adaptive.enabled", false)
 spark.conf.set("spark.sql.shuffle.partitions", 111)
 

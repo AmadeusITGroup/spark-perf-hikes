@@ -56,8 +56,8 @@ import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.DataFrame
 import io.delta.tables.DeltaTable
 
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
-val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
+val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
+val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 val probeDir = tmpPath + "/input"
 val buildDir = tmpPath + "/employee"
 

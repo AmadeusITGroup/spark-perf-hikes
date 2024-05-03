@@ -54,8 +54,8 @@ val spark: SparkSession = SparkSession.active
 // COMMAND ----------
 spark.conf.set("spark.sql.adaptive.enabled", false)
 val customUdf = udf { (s: String) => s"prefix-$s" } // custom UDF, Photon cannot run it efficiently
-val input = "/tmp/amadeus-spark-lab/datasets/optd_por_public_filtered.csv"
-val tmpPath = "/tmp/amadeus-spark-lab/sandbox/" + UUID.randomUUID()
+val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
+val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 val inputDeltaPath = tmpPath + "/input"
 spark.sparkContext.setJobDescription("Initialization jobs")
 val inputDf = spark.read.option("delimiter", "^").option("header", "true").csv(input)

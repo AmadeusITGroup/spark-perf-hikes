@@ -6,4 +6,5 @@ project
 build.sbt
 .bsp
 .idea
+tmp/
 target/
