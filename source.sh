@@ -21,18 +21,7 @@ function ph_log_error() {
     echo -e "${ph_red}[ERROR] $1${ph_nc}" >&2
 }
 
-
 function spark-init-datasets-local() {
-  if [ ! -f ${ph_spark_sandbox_tmp_path}datasets/optd_por_public.csv ]; then
-    ph_log_info "Downloading datasets in ${ph_spark_sandbox_tmp_path}datasets/"
-    mkdir -p $ph_spark_sandbox_tmp_path/datasets
-    curl https://raw.githubusercontent.com/opentraveldata/opentraveldata/master/opentraveldata/optd_por_public.csv > $ph_spark_sandbox_tmp_path/datasets/optd_por_public.csv
-  else
-    ph_log_info "Datasets already downloaded in ${ph_spark_sandbox_tmp_path}datasets/"
-  fi
-}
-
-function spark-init-datasets-local-tmp() {
   if [ ! -f ${ph_spark_sandbox_tmp_path}datasets/optd_por_public_filtered.csv ]; then
     mkdir -p $ph_spark_sandbox_tmp_path/datasets
     cp misc/optd_por_public_filtered.csv $ph_spark_sandbox_tmp_path/datasets/optd_por_public_filtered.csv
@@ -60,7 +49,7 @@ function spark-run-local() {
   local script="$1"
   local args=$(cat $script | sed -n 's#// Local: ##gp')
   local version=$(cat $script | sed -n 's#// Spark: ##gp')
-  spark-init-datasets-local-tmp
+  spark-init-datasets-local
   spark-local-check-version $version
   ph_log_info "script: $script, spark-shell ${args}"
   cat $script - | eval spark-shell ${args}
@@ -78,14 +67,6 @@ function spark-import-databricks() {
 }
 
 function spark-init-datasets-databricks() {
-  local profile=$1
-  spark-init-datasets-local
-  local src=$ph_spark_sandbox_tmp_path/datasets/optd_por_public.csv
-  databricks fs mkdir dbfs:/$(dirname $src) --profile $profile
-  databricks fs cp $src dbfs:/$src --profile $profile
-}
-
-function spark-init-datasets-databricks-tmp() {
   local profile=$1
   spark-init-datasets-local
   local src=$ph_spark_sandbox_tmp_path/datasets/optd_por_public_filtered.csv
