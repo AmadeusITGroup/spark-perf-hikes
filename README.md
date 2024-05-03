@@ -46,7 +46,7 @@ val airports = spark.read.option("delimiter","^").option("header","true").csv(pa
 The following documentation has been tested on computers running a Linux like OS, 
 where [Apache Spark 3.5.1](https://spark.apache.org/downloads.html), as well as Java are already installed.
 
-### A. Initialize the environment
+### Setup the environment
 
 The very first time you use the project you need to install it.
 
@@ -74,27 +74,26 @@ spark-init-datasets-databricks <profile>
 
 3. Make sure `spark-shell` is in your `PATH`
 
-### B. Launch a snippet
 
-#### B.1 Launch a snippet locally
+
+### Launch a snippet
+
+#### Launch a snippet locally
 
 ```bash
 spark-run-local <snippet.sc>
 ```
 
-Some existing snippets:
+Some problems addressed:
 
-- [Spill](spark3%2Fspill-increase-shuffle-partitions.sc)
-- [Thread Contention](spark3%2Fthread-contention-adapt-closure.sc)
-- [Partition Pruning](spark3%2Fscd-type-2-merge-partition-pruning.sc)
-- [Delta table Z-Ordering and file pruning](spark3%2Fread-amplification-zorder-fp.sc)
-- Dynamic File Pruning [in join with zorder](spark3%2Fread-amplification-join-dfp-zorder.sc) & [in merge with zorder and photon](spark3%2Fread-amplification-merge-dfp-zorder-photon.sc)
-- Write amplification & [deletion vectors](spark3%2Fwrite-amplification-deletion-vector.sc)
-- [Spark UI retention limits](spark3%2Fsparkui-incomplete-persist-events.sc)
+- Spill
+- Thread Contention
+- Read amplification (addressed with partition pruning, DFP, z-ordering, FP, ...)
+- Write amplification (addressed with deletion vectors, ...)
+- Spark UI retention limits
+- ...
 
-Note: Dynamic File Pruning and File Pruning examples only work as intended on Databricks.
-
-#### B.2 Launch a snippet _on Databricks_
+#### Launch a snippet _on Databricks_
 
 First copy the snippet you want on your Databricks workspace:
 
@@ -102,9 +101,11 @@ First copy the snippet you want on your Databricks workspace:
 spark-import-databricks <snippet.sc> <profile> <destination-folder> <extra-args: e.g., --overwrite>
 ```
 
-### C. Write your own snippet
+## Contributing
 
-#### IDE setup
+### IDE setup
+
+First you need to setup the environment as described above.
 
 To write a snippet we encourage you to create a `build.sbt` file, and load the project as a scala project:
 
@@ -124,3 +125,26 @@ lazy val root = (project in file("."))
     libraryDependencies := deps
   )
 ```
+
+### Write the snippet
+
+A new snippet must honor the description and the structure provided above.
+
+The naming convention is: <problem-description>.<solution-description>.sc
+
+### Create a Pull Request
+
+Please follow [the Apache Software Foundation Code of Conduct](https://www.apache.org/foundation/policies/conduct.html).
+
+All contributions must go through a Pull Request review before being accepted. 
+
+Before opening a Pull Request, please consider the following questions:
+
+- Is the change ready enough to ask the community to spend time reviewing?
+- Is the change being proposed clearly explained and motivated?
+
+When you contribute code, you affirm that the contribution is your original work and that you
+license the work to the project under the project's open source license. Whether or not you
+state this explicitly, by submitting any copyrighted material via pull request, email, or
+other means you agree to license the material under the project's open source license and
+warrant that you have the legal authority to do so.
