@@ -24,7 +24,7 @@ function ph_log_error() {
 function spark-init-datasets-local() {
   if [ ! -f ${ph_spark_sandbox_tmp_path}datasets/optd_por_public_filtered.csv ]; then
     mkdir -p $ph_spark_sandbox_tmp_path/datasets
-    cp misc/optd_por_public_filtered.csv $ph_spark_sandbox_tmp_path/datasets/optd_por_public_filtered.csv
+    cp datasets/optd/optd_por_public_filtered.csv $ph_spark_sandbox_tmp_path/datasets/optd_por_public_filtered.csv
   else
     ph_log_info "Datasets already present in ${ph_spark_sandbox_tmp_path}datasets/"
   fi
