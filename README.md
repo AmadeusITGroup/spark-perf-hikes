@@ -1,12 +1,45 @@
-# README
+# Performance Hikes for Apache Spark
 
-This module allows to launch snippets on Spark 3. 
+[![License](http://img.shields.io/:license-Apache%202-brightgreen.svg)](http://www.apache.org/licenses/LICENSE-2.0.txt)
 
-Each snippet contains:
-- a scala code you can run
-- the documentation
-- the dependencies
-- the spark settings
+This project contains a collection of code snippets designed for hands-on exploration of Apache Spark functionalities, with a strong focus on performance optimization.
+
+Each snippet is pedagogic, self-contained, executable, and focuses on one performance problem providing at least one possible solution.
+
+Thanks to this, the user learns about problems/features by:​
+- exploring and reading the snippets​
+- running them​
+- following them on Spark UI​
+- monitoring them​
+- modifying them​
+- ...​
+
+A typical snippet has the folowing structure:
+
+```scala
+// Spark: <version of spark this snippet is intended to be used with>
+// Local: <spark shell extra options when used locally, e.g. --master local[2] --driver-memory 1G >
+// Databricks: <placeholder, unused for now>
+
+// COMMAND ----------
+
+/*
+<brief description of problem and a possible solution high level>
+
+# Symptom
+<problem symptoms>
+
+# Explanation
+<explanation of the potential solution, the analysis or any other detail about how to address the problem>
+*/
+
+// COMMAND ----------
+
+spark.sparkContext.setJobDescription("JOB")
+val path = ???
+val airports = spark.read.option("delimiter","^").option("header","true").csv(path)
+/// ... more scala code ...
+```
 
 ## Getting started
 
@@ -90,33 +123,4 @@ lazy val root = (project in file("."))
     scalaVersion := "2.12.13",
     libraryDependencies := deps
   )
-```
-
-#### Snippet structure
-
-Each snippet is supposed to have the same structure of the following example:
-
-```scala
-// Spark: <version of spark this snippet is intended to be used with>
-// Local: <spark shell extra options when used locally, e.g. --executor-memory 1G --driver-memory 1G --executor-cores 1 --master local[2] >
-// Databricks: <placeholder, unused for now>
-
-// COMMAND ----------
-
-/*
-<brief description of problem and a possible solution high level>
-
-# Symptom
-<problem symptoms>
-
-# Explanation
-<explanation of the potential solution, the analysis or any other detail about how to address the problem>
-*/
-
-// COMMAND ----------
-
-... scala code corresponding to the snippet ...
-
-
-
 ```
