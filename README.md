@@ -94,11 +94,13 @@ Some problems addressed:
 
 #### Launch a snippet _on Databricks_
 
-First copy the snippet you want on your Databricks workspace:
+First copy the snippet you want to your Databricks workspace:
 
 ```
 spark-import-databricks <snippet.sc> <profile> <destination-folder> <extra-args: e.g., --overwrite>
 ```
+
+Then run it as a notebook.
 
 ## Contributing
 
