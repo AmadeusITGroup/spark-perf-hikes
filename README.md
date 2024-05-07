@@ -6,13 +6,13 @@ This project contains a collection of code snippets designed for hands-on explor
 
 Each snippet is pedagogic, self-contained, executable, and focuses on one performance problem providing at least one possible solution.
 
-Thanks to this, the user learns about problems/features by:​
-- exploring and reading the snippets​
-- running them​
-- following them on Spark UI​
-- monitoring them​
-- modifying them​
-- ...​
+Thanks to this, the user learns about problems/features by:
+- exploring and reading the snippets
+- running them
+- following them on Spark UI
+- monitoring them
+- modifying them
+- ...
 
 A typical snippet has the folowing structure:
 
@@ -45,16 +45,22 @@ val airports = spark.read.option("delimiter","^").option("header","true").csv(pa
 
 ### Setup the environment
 
-The very first time you use the project you need to install it.
+The very first time you use the project you need to do some setup.
 
-1. [optional] Configure the Databricks cli on your machine.
+1. Install spark locally and make sure `spark-shell` is in your `PATH`
+
+You can install Apache Spark and the Spark Shell by following the instructions on the [Apache Spark website](https://spark.apache.org/downloads.html).
+If you want to reproduce as close as possible the expected behavior of each snippet,
+you should install the same version of Spark as the one mentioned in the snippet (at least same major.minor).
+
+2. [optional] Configure the Databricks cli on your machine.
 
    This step is optional, and you have to do it only if you want to run the snippets on Databricks.
    Be sure to:
    - install Databricks cli versions 0.205 and above (cf. https://docs.databricks.com/en/dev-tools/cli/tutorial.html)
-   - define the profile correctly in your `~/.databrickscfg` file for authentication.
+   - define the Databricks profile (containing name, url and credentials of your Databricks workspace) in your `~/.databrickscfg` file.
 
-2. Add the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
+3. Add the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
 
 ```bash
 export PERF_HIKES_PATH=<this-path>
@@ -62,18 +68,13 @@ export PATH=$PATH:<spark-shell-directory>
 source $PERF_HIKES_PATH/source.sh # to define the aliases
 ```
 
-3. Then set up some sample datasets:
+4. Then set up some sample datasets:
 
 ```
-spark-init-datasets-local
-spark-init-datasets-databricks <profile>
+spark-init-datasets-local                                # local runs
+spark-init-datasets-databricks <databricks-profile-name> # for databricks runs
 ```
 
-4. Make sure `spark-shell` is in your `PATH`
-
-You can install Apache Spark and the Spark Shell by following the instructions on the [Apache Spark website](https://spark.apache.org/downloads.html).
-If you want to reproduce as close as possible the expected behavior of each snippet,
-you should install the same version of Spark as the one mentioned in the snippet (at least same major.minor).
 
 ### Launch a snippet
 
@@ -97,7 +98,7 @@ Some problems addressed:
 First copy the snippet you want to your Databricks workspace:
 
 ```
-spark-import-databricks <snippet.sc> <profile> <destination-folder> <extra-args: e.g., --overwrite>
+spark-import-databricks <snippet.sc> <databricks-profile-name> <destination-folder> <extra-args: e.g., --overwrite>
 ```
 
 Then run it as a notebook.
