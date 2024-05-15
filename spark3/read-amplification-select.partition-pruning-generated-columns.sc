@@ -39,19 +39,21 @@ import org.apache.spark.sql.functions._
 val spark: SparkSession = SparkSession.active
 
 spark.conf.set("spark.sql.adaptive.enabled", false)
-
 val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 
 val delta = tmpPath + "/delta"
 
-DeltaTable.create(spark).location(delta).
-  addColumn("id", "INT").
-  addColumn("datetime", "TIMESTAMP").
-  addColumn("year", "INT"). // will be computed from datetime
-  addColumn("datetime_pp", "TIMESTAMP").
-  addColumn(DeltaTable.columnBuilder("year_pp").dataType("INT").generatedAlwaysAs("year(datetime_pp)").build()). // generated column from datetime_pp
-  partitionedBy("year", "year_pp").
-  execute()
+spark.sql(s"""
+CREATE TABLE tbl (
+  id INT,
+  datetime TIMESTAMP,
+  year INT,
+  datetime_pp TIMESTAMP,
+  year_pp INT GENERATED ALWAYS AS (year(datetime_pp))
+) 
+USING DELTA LOCATION '${delta}' 
+PARTITIONED BY (year, year_pp)
+""").show()
 
 val df = Seq(
   (0, java.sql.Timestamp.valueOf("2020-01-01 00:00:00")),
