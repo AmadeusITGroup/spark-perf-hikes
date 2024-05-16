@@ -1,6 +1,6 @@
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
-// Databricks: ...
+// Databricks: 13.3LTS
 
 // COMMAND ----------
 
@@ -15,12 +15,17 @@ References:
 
 IMPORTANT: DFP is only available when running on Databricks.
 
+# What to aim for
+
+In a join between a large and a small table, in the 'Scan parquet' node of the big one, the 
+metric 'number of files read' should be small compared with the 'number of files pruned'. 
+
 # Symptom
 
-You are joining a small table with a big one and you are reading way more data that is actually needed 
-to perform the join operation.
-You know that you could read less data, because you know that only few records in the big table match
-with the join keys present in the small table.
+You are joining a small table with a big one and you are reading way more data that is actually 
+needed to perform the join operation.
+You know that you could read less data, because you know that only few records in the big table 
+match with the join keys present in the small table.
 
 # Explanation
 
@@ -28,13 +33,13 @@ We are doing a join between the following two tables:
 - a "build" side: smaller table
 - a "probe" side: bigger table
 
-The probe side is z-ordered on the join key, in order to co-locate closer keys in the same set of files
+The probe side is z-ordered on the join key, in order to co-locate closer keys in the same set 
+of files.
 
-In the first scenario, DFP is not activated.
-Here we see that the whole probe table is read.
+In the first scenario, DFP is not activated. We see that the whole probe table is read.
 
-In the second scenario, DFP is activated.
-Here we see that only the files containing the join keys present in the build table are read.
+In the second scenario, DFP is activated. We see that only the files containing the join keys 
+present in the build table are read.
 
 In order to make sure that DFP can kick-in:
   - the build side must be broadcastable
@@ -79,7 +84,7 @@ DeltaTable.forPath(probeDir).optimize().executeZOrderBy("country_code")
 // COMMAND ----------
 
 // Note the total number of files after z-ordering (8)
-DeltaTable.forPath(probeDir).detail.select("numFiles").show
+DeltaTable.forPath(probeDir).detail.selectExpr("numFiles as total_number_of_files_after_zorder").show
 
 // COMMAND ----------
 
@@ -153,5 +158,9 @@ spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
 // Second scenario: DFP activated and preconditions are met
 joinTables("DFP")
 
-// Go to the Databricks Spark UI, look for the SQL query corresponding to the Join,
-// and see the number of files actually read in the 'Scan parquet' node
+// Go to the Databricks Spark UI, look for the SQL query corresponding to the joins (i.e. 
+// "Join tables: DFP" and "Join tables: NO DFP"), and compare the 'number of files read' 
+// and 'number of files pruned' metrics in the big table 'Scan parquet' node of both queries.
+// You can also get the total amount of files of a delta table with 'describe detail'.
+// NOTE: The sum of 'number of files read' and 'number of files pruned' should give the total 
+// amount of files in the table as per its last version.

@@ -1,6 +1,6 @@
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
-// Databricks: ...
+// Databricks: 13.3LTS+photon
 
 // COMMAND ----------
 
@@ -16,7 +16,7 @@ References:
 IMPORTANT: DFP and Photon are only available when running on Databricks.
 
 # Symptom
-You are merging a small dataframe into a delta table and you are reading way more data that is actually needed
+You are merging a small dataframe into a big delta table and you are reading way more data that is actually needed
 to perform the merge.
 You know that you could read less data, because you know that only few records in the input dataframe will match
 with records in the big table.
@@ -26,13 +26,11 @@ with records in the big table.
 The delta table is z-ordered on the merge key, in order to co-locate closer keys in the same set of files.
 We assume that we are running on Databricks using Photon.
 
-First scenario: No DFP
-Here we see that the whole delta table is read for the merge, both when the dataframe comes from a delta table,
-and when it doesn't.
+First scenario: No DFP. We see that the whole delta table is read for the merge, both when the dataframe comes from a delta table,
+and when it does not.
 
-Second scenario: DFP
-Here we see that only the delta table files containing the merge keys present in the small dataframe are read
-in the first (inner) join corresponding to the merge, when the input dataframe comes from a delta table.
+Second scenario: DFP. We see that only the delta table files containing the merge keys present in the small dataframe are read
+in the first (inner) join corresponding to the merge. This happens only when the input dataframe comes from a delta table. 
 
 In order to make sure that DFP can kick-in:
   - the small dataframe must be broadcastable
@@ -43,7 +41,6 @@ In order to make sure that DFP can kick-in:
 
 Important note: if the keys in the input dataframe are such that they hit every files of the table,
 even having z-oder and activating DFP, there will still be read amplification.
-...
 
 */
 
@@ -75,11 +72,6 @@ airports.write.mode("overwrite").format("delta").save(deltaDir)
 spark.sparkContext.setJobDescription("Z-order delta table")
 spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 50 * 1024L)
 DeltaTable.forPath(deltaDir).optimize().executeZOrderBy("iata_code")
-
-// COMMAND ----------
-
-// Note the total number of files after z-ordering
-DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // COMMAND ----------
 
@@ -136,14 +128,14 @@ def merge(df: DataFrame): Unit = {
 spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "false")
 
 // No DFP (input not from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - NO DFP - input not delta")
+spark.sparkContext.setJobDescription("Merge 1 - NO DFP - input not delta")
+DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge1").show
 merge(buildDataframeToMerge("AAI", "no-dfp-no-delta"))
-DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // No DFP (input from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - NO DFP - input delta")
+spark.sparkContext.setJobDescription("Merge 2 - NO DFP - input delta")
+DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge2").show
 merge(buildDeltaTableToMerge("AAI", "no-dfp-delta"))
-DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // Second scenario
 
@@ -154,12 +146,13 @@ spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
 spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
 
 // DFP (input not from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - DFP - input not delta")
+spark.sparkContext.setJobDescription("Merge 3 - DFP - input not delta")
+DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge3").show
 merge(buildDataframeToMerge("BWU", "dfp-no-delta"))
-DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // DFP (input from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - DFP - input delta")
+spark.sparkContext.setJobDescription("Merge 4 - DFP - input delta")
+DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge4").show
 merge(buildDeltaTableToMerge("BWU", "dfp-delta"))
 
 // For each merge, go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
