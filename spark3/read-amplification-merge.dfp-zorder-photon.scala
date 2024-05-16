@@ -12,8 +12,18 @@ References:
 - https://docs.databricks.com/en/optimizations/dynamic-file-pruning.html
 - https://www.databricks.com/blog/2020/04/30/faster-sql-queries-on-delta-lake-with-dynamic-file-pruning.html
 - https://docs.databricks.com/en/delta/data-skipping.html#delta-zorder
+- https://www.databricks.com/blog/2020/09/29/diving-into-delta-lake-dml-internals-update-delete-merge.html
 
 IMPORTANT: DFP and Photon are only available when running on Databricks.
+
+# What to aim for
+
+In the Spark UI, tab "SQL / DataFrame", for a given merge there will be many SQL queries with the same 
+Description. Some of them will have multiple Sub Execution IDs. One of those Sub Executions will contain the 
+first of the two merge joins (will be an 'inner' join, which can be seen through the tooltip text of the 
+'PhotonBroadcastHashJoin' operator). Such first join should have on 'PhotonScan' operator a metric 
+'files read' that should be small compared with 'files pruned'. Also in 'Details' there should be 
+a mention of 'dynamicpruning'.
 
 # Symptom
 You are merging a small dataframe into a big delta table and you are reading way more data that is actually needed
@@ -96,7 +106,7 @@ def getMaxMinStats(tablePath: String, colName: String, commit: Int): DataFrame =
   df
 }
 
-// Note that only 1 files out of 9 contains the iata_code 'AAI'
+// Note that only 1 parquet file contains the iata_code 'AAI' (out of many parquet files in the delta table)
 spark.sparkContext.setJobDescription(s"Display max/min stats for files present in delta table after z-order")
 getMaxMinStats(deltaDir, "iata_code", 1).show(false)
 
@@ -148,12 +158,12 @@ spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
 // DFP (input not from delta)
 spark.sparkContext.setJobDescription("Merge 3 - DFP - input not delta")
 DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge3").show
-merge(buildDataframeToMerge("BWU", "dfp-no-delta"))
+merge(buildDataframeToMerge("AAI", "dfp-no-delta"))
 
 // DFP (input from delta)
 spark.sparkContext.setJobDescription("Merge 4 - DFP - input delta")
 DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge4").show
-merge(buildDeltaTableToMerge("BWU", "dfp-delta"))
+merge(buildDeltaTableToMerge("AAI", "dfp-delta"))
 
 // For each merge, go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
 // open the sub-queries and analyse those corresponding to the two joins (an inner and a left outer join).
