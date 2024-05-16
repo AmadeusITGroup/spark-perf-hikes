@@ -16,15 +16,6 @@ References:
 
 IMPORTANT: DFP and Photon are only available when running on Databricks.
 
-# What to aim for
-
-In the Spark UI, tab "SQL / DataFrame", for a given merge there will be many SQL queries with the same 
-Description. Some of them will have multiple Sub Execution IDs. One of those Sub Executions will contain the 
-first of the two merge joins (will be an 'inner' join, which can be seen through the tooltip text of the 
-'PhotonBroadcastHashJoin' operator). Such first join should have on 'PhotonScan' operator a metric 
-'files read' that should be small compared with 'files pruned'. Also in 'Details' there should be 
-a mention of 'dynamicpruning'.
-
 # Symptom
 You are merging a small dataframe into a big delta table and you are reading way more data that is actually needed
 to perform the merge.
@@ -51,6 +42,15 @@ In order to make sure that DFP can kick-in:
 
 Important note: if the keys in the input dataframe are such that they hit every files of the table,
 even having z-oder and activating DFP, there will still be read amplification.
+
+# What to aim for concretely
+
+In the Spark UI, tab "SQL / DataFrame", for a given merge there will be many SQL queries with the same 
+Description. Some of them will have multiple Sub Execution IDs. One of those Sub Executions will contain the 
+first of the two merge joins (will be an 'inner' join, which can be seen through the tooltip text of the 
+'PhotonBroadcastHashJoin' operator). Such first join should have on 'PhotonScan' operator a metric 
+'files read' that should be small compared with 'files pruned'. Also in 'Details' there should be 
+a mention of 'dynamicpruning'.
 
 */
 

@@ -19,7 +19,7 @@ A typical snippet has the folowing structure:
 ```scala
 // Spark: <version of spark this snippet is intended to be used with>
 // Local: <spark shell extra options when used locally, e.g. --master local[2] --driver-memory 1G >
-// Databricks: <placeholder, unused for now>
+// Databricks: <details about runtime used to test the snipped, unused for now>
 
 // COMMAND ----------
 
@@ -31,6 +31,9 @@ A typical snippet has the folowing structure:
 
 # Explanation
 <explanation of the potential solution, the analysis or any other detail about how to address the problem>
+
+# What to aim for concretely
+<concrete steps to get to the metrics / indicator that the solution proposed is working properly>
 */
 
 // COMMAND ----------

@@ -15,11 +15,6 @@ References:
 
 IMPORTANT: DFP is only available when running on Databricks.
 
-# What to aim for
-
-In a join between a large and a small table, in the 'Scan parquet' node of the big one, the 
-metric 'number of files read' should be small compared with the 'number of files pruned'. 
-
 # Symptom
 
 You are joining a small table with a big one and you are reading way more data that is actually 
@@ -49,7 +44,12 @@ In order to make sure that DFP can kick-in:
 
 Important note: if the join keys on the build side are such that they hit every files of the probe side,
 even having z-oder and activating DFP, there will still be read amplification.
-...
+
+# What to aim for concretely
+
+In the Spark UI, in a join between a large and a small table, in the 'Scan parquet' node of the big one, the 
+metric 'number of files read' should be small compared with the 'number of files pruned'. 
+
 
 */
 

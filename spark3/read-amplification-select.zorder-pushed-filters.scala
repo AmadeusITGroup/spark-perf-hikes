@@ -13,7 +13,6 @@ References:
 # Symptom
 If not particulary specified, data are heterogeneously distributed within files in Delta tables.
 
-
 # Explanation
 Data stored in Delta tables can be optimized with usage centric settings.
 

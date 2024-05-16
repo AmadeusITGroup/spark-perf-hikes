@@ -11,9 +11,6 @@ It also shows how to figure out if Photon is underused in a given section of the
 Note: this snippet is only meaningful to be executed on Databricks (as Photon is not 
 available locally).
 
-# What to aim for
-- Photon is fully used: execution plan in SQL Queries is mostly yellow.
-
 # Symptom
 You enabled Photon (and agreed to pay the extra cost), but the cost gain is below expectations. 
 For instance the overall cost of your Databricks job is higher when Photon enabled.
@@ -50,6 +47,10 @@ The query is fully supported by Photon.
 ```
 
 Clearly, the best is to use built-in SQL functions, as Photon can be fully used.
+
+# What to aim for concretely
+- Photon is fully used: execution plan in SQL Queries is mostly yellow.
+
 */
 
 // COMMAND ----------
