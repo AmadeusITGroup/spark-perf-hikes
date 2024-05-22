@@ -75,6 +75,8 @@ val numVersions = 100
 
 val spark: SparkSession = SparkSession.active
 
+spark.conf.set("spark.sql.adaptive.enabled", false)
+
 // COMMAND ----------
 
 def optimize(deltaDir: String): Unit = {
@@ -123,8 +125,9 @@ def toDelta(df: DataFrame): DataFrame = {
 // id, 101, true
 // id, 100, false
 def buildDataframeToMergeSCD(id: String, deltaDir: String, condition: String = "1 = 1"): DataFrame = {
-  val keyVersions = DeltaTable.forPath(deltaDir).toDF.filter(s"id = '$id'").filter(condition)
-  val union = keyVersions union newVersion(id, numVersions + 1)
+  val input = newVersion(id, numVersions + 1).cache()
+  val keyVersions = DeltaTable.forPath(deltaDir).toDF.filter(condition).join(input, "id", "leftsemi")
+  val union = keyVersions union input
   val groupByKeyOrderByVersion = Window.partitionBy("id").orderBy(desc("version"))
   val df = union.withColumn("r", row_number().over(groupByKeyOrderByVersion)).withColumn("is_last", col("r") === 1).drop("r")
   toDelta(df)
