@@ -6,6 +6,7 @@
 /*
 
 This snippet presents a use case of streaming over a delta table where we do merges that updates 1 record.
+We show how this could lead to situations where we need to process more data than actually needed.
 
 We consider two possible streaming queries:
 - one with "readChangeFeed"
