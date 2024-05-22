@@ -30,7 +30,7 @@ no information on the table associating how to infer 'year' value from the 'date
 However, if we query the table with a filter on 'datetime_pp' we will have partition pruning. Why? The 
 'year_pp' is computed as a generated column from a 'datetime_pp' applying 
 the SQL builtin function year(). This creates an association between the column 'datetime_pp' and the 
-column 'year_pp' that can be exploited by the optimizer to infer eligible partition values.
+column 'year_pp' that can be used by the optimizer to infer eligible partition values.
 
 Note that only few SQL builtin functions are supported for partition pruning.
 

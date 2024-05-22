@@ -33,8 +33,8 @@ of files.
 
 In the first scenario, DFP is not activated. We see that the whole probe table is read.
 
-In the second scenario, DFP is activated. We see that only the files containing the join keys 
-present in the build table are read.
+In the second scenario, DFP is activated. We see that, for the probe table, only the files containing 
+the join keys present in the build table are read.
 
 In order to make sure that DFP can kick-in:
   - the build side must be broadcastable
