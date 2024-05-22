@@ -1,6 +1,6 @@
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
-// Databricks: ...
+// Databricks: 13.3LTS+photon
 
 // COMMAND ----------
 
@@ -12,11 +12,12 @@ References:
 - https://docs.databricks.com/en/optimizations/dynamic-file-pruning.html
 - https://www.databricks.com/blog/2020/04/30/faster-sql-queries-on-delta-lake-with-dynamic-file-pruning.html
 - https://docs.databricks.com/en/delta/data-skipping.html#delta-zorder
+- https://www.databricks.com/blog/2020/09/29/diving-into-delta-lake-dml-internals-update-delete-merge.html
 
 IMPORTANT: DFP and Photon are only available when running on Databricks.
 
 # Symptom
-You are merging a small dataframe into a delta table and you are reading way more data that is actually needed
+You are merging a small dataframe into a big delta table and you are reading way more data that is actually needed
 to perform the merge.
 You know that you could read less data, because you know that only few records in the input dataframe will match
 with records in the big table.
@@ -26,13 +27,11 @@ with records in the big table.
 The delta table is z-ordered on the merge key, in order to co-locate closer keys in the same set of files.
 We assume that we are running on Databricks using Photon.
 
-First scenario: No DFP
-Here we see that the whole delta table is read for the merge, both when the dataframe comes from a delta table,
-and when it doesn't.
+First scenario: No DFP. We see that the whole delta table is read for the merge, both when the dataframe comes from a delta table,
+and when it does not.
 
-Second scenario: DFP
-Here we see that only the delta table files containing the merge keys present in the small dataframe are read
-in the first (inner) join corresponding to the merge, when the input dataframe comes from a delta table.
+Second scenario: DFP. We see that only the delta table files containing the merge keys present in the small dataframe are read
+in the first (inner) join corresponding to the merge. This happens only when the input dataframe comes from a delta table. 
 
 In order to make sure that DFP can kick-in:
   - the small dataframe must be broadcastable
@@ -43,7 +42,15 @@ In order to make sure that DFP can kick-in:
 
 Important note: if the keys in the input dataframe are such that they hit every files of the table,
 even having z-oder and activating DFP, there will still be read amplification.
-...
+
+# What to aim for concretely
+
+In the Spark UI, tab "SQL / DataFrame", for a given merge there will be many SQL queries with the same 
+Description. Some of them will have multiple Sub Execution IDs. One of those Sub Executions will contain the 
+first of the two merge joins (will be an 'inner' join, which can be seen through the tooltip text of the 
+'PhotonBroadcastHashJoin' operator). Such first join should have on 'PhotonScan' operator a metric 
+'files read' that should be small compared with 'files pruned'. Also in 'Details' there should be 
+a mention of 'dynamicpruning'.
 
 */
 
@@ -78,11 +85,6 @@ DeltaTable.forPath(deltaDir).optimize().executeZOrderBy("iata_code")
 
 // COMMAND ----------
 
-// Note the total number of files after z-ordering
-DeltaTable.forPath(deltaDir).detail.select("numFiles").show
-
-// COMMAND ----------
-
 def getMaxMinStats(tablePath: String, colName: String, commit: Int): DataFrame = {
   // stats on parquet files added to the table
   import org.apache.spark.sql.functions._
@@ -104,7 +106,7 @@ def getMaxMinStats(tablePath: String, colName: String, commit: Int): DataFrame =
   df
 }
 
-// Note that only 1 files out of 9 contains the iata_code 'AAI'
+// Note that only 1 parquet file contains the iata_code 'AAI' (out of many parquet files in the delta table)
 spark.sparkContext.setJobDescription(s"Display max/min stats for files present in delta table after z-order")
 getMaxMinStats(deltaDir, "iata_code", 1).show(false)
 
@@ -136,14 +138,14 @@ def merge(df: DataFrame): Unit = {
 spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "false")
 
 // No DFP (input not from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - NO DFP - input not delta")
+spark.sparkContext.setJobDescription("Merge 1 - NO DFP - input not delta")
+DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge1").show
 merge(buildDataframeToMerge("AAI", "no-dfp-no-delta"))
-DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // No DFP (input from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - NO DFP - input delta")
+spark.sparkContext.setJobDescription("Merge 2 - NO DFP - input delta")
+DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge2").show
 merge(buildDeltaTableToMerge("AAI", "no-dfp-delta"))
-DeltaTable.forPath(deltaDir).detail.select("numFiles").show
 
 // Second scenario
 
@@ -154,13 +156,14 @@ spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
 spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
 
 // DFP (input not from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - DFP - input not delta")
-merge(buildDataframeToMerge("BWU", "dfp-no-delta"))
-DeltaTable.forPath(deltaDir).detail.select("numFiles").show
+spark.sparkContext.setJobDescription("Merge 3 - DFP - input not delta")
+DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge3").show
+merge(buildDataframeToMerge("AAI", "dfp-no-delta"))
 
 // DFP (input from delta)
-spark.sparkContext.setJobDescription("Merge dataframe - DFP - input delta")
-merge(buildDeltaTableToMerge("BWU", "dfp-delta"))
+spark.sparkContext.setJobDescription("Merge 4 - DFP - input delta")
+DeltaTable.forPath(deltaDir).detail.selectExpr("numFiles as total_number_of_files_before_merge4").show
+merge(buildDeltaTableToMerge("AAI", "dfp-delta"))
 
 // For each merge, go to the Databricks Spark UI, look for the SQL query corresponding to the Merge,
 // open the sub-queries and analyse those corresponding to the two joins (an inner and a left outer join).
