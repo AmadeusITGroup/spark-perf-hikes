@@ -13,14 +13,28 @@ References:
 - https://docs.delta.io/3.1.0/delta-utility.html
 
 # Symptom
-The volume of data being rewritten in a Delta Table on a MERGE is way above the volume of the records expected to be updated / added.
+The volume of data being rewritten in a Delta Table on a MERGE is 
+way above the volume of the records expected to be updated / added.
+Another symptom is an unexpected high network egress cost.
 
 # Explanation
-Let's take first the case without Deletion Vectors. Upon MERGE, the Delta Table will rewrite the files that contain the
-records to be updated / added. This is clearly suboptimal when few records are to be updated. For example, in an extreme case, if
-there is 1 record to be updated in a large file, the whole file has to be replaced.
-Instead, Delete Vectors can be used (Merge-on-Read strategy). This strategy reuses large files with few records to be deleted, and simply
-marks the records to be ignored from the such files, in deletion vector files. New records are written in new small files.
+Let's take first the case without Deletion Vectors. Upon MERGE, the Delta Table will 
+rewrite the files that contain the records to be updated / added. This is clearly suboptimal when few 
+records are to be updated. For example, in an extreme case, if there is 1 record to be updated in a 
+large parquet file of the delta table, the whole file has to be rewritten.
+Instead, Delete Vectors can be used (Merge-on-Read strategy). This strategy reuses large files by doing a soft-delete
+of records no longer valid, and creates new small files with the new records.
+The write amplification can be assessed by understanding the ratio between the volume of data that is intended
+to be written, versus the volume of data physically written. Both can be read from the `history()` operationMetrics 
+of the delta tables, either as data volume (in bytes), number of rows or number of files.
+See the method `showOperationMetrics`.
+
+# What to aim for concretely
+In Delta merges, the goal is to physically write only as much data as functionally intended to.
+Concretely, the goal is to have operationMetrics in the history() such that the two
+- numSourceRows (number of batch rows that are intended to be used for the merge)
+- numOuputRows (number of rows physically written in the table on the merge)
+should have similar values.
 */
 
 // COMMAND ----------
@@ -63,13 +77,13 @@ def mergeOntoDeltaTable(target: DeltaTable, df: DataFrame) = {
     .whenMatched.updateAll.whenNotMatched.insertAll.execute()
 }
 
-def showMergeStats(target: DeltaTable): Unit = {
+def showOperationMetrics(target: DeltaTable): Unit = {
   target.history().select("version", "operation",
     "operationMetrics.numTargetFilesAdded", "operationMetrics.numTargetFilesRemoved",
     "operationMetrics.numTargetBytesAdded", "operationMetrics.numTargetBytesRemoved",
-    "operationMetrics.numSourceRows"/* number of rows in the source dataframe */, 
-    "operationMetrics.numOutputRows" /* total number of rows written */
-    //"operationMetrics.numTargetRowsInserted", // output rows in detail
+    "operationMetrics.numSourceRows"/* number of rows in the source dataframe, intended to be merged */, 
+    "operationMetrics.numOutputRows" /* total number of rows physically written */
+    //"operationMetrics.numTargetRowsInserted", // output rows more in detail
     //"operationMetrics.numTargetRowsUpdated", 
     //"operationMetrics.numTargetRowsDeleted", 
     //"operationMetrics.numTargetRowsCopied", 
@@ -87,13 +101,13 @@ spark.sparkContext.setJobDescription("MERGE WITHOUT DV")
 mergeOntoDeltaTable(DeltaTable.forPath(deltaWithoutDvDir), buildDataframeToMerge("SF", "newcomment"))
 // large write amplification (MERGE deletes all old files and writes new large files, as many as shuffle.partitions,
 // few source rows, many output rows written)
-showMergeStats(DeltaTable.forPath(deltaWithoutDvDir))
+showOperationMetrics(DeltaTable.forPath(deltaWithoutDvDir))
 
 // WITH DV
 spark.sparkContext.setJobDescription("MERGE WITH DV")
 mergeOntoDeltaTable(DeltaTable.forPath(deltaWithDvDir), buildDataframeToMerge("SF", "newcomment"))
 // small write amplification (MERGE keeps old files marking records to be ignored, and writes new small file with the new records
 // few source rows, and few output rows written)
-showMergeStats(DeltaTable.forPath(deltaWithDvDir))
+showOperationMetrics(DeltaTable.forPath(deltaWithDvDir))
 
 // COMMAND ----------
