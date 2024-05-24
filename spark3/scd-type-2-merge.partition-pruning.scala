@@ -6,7 +6,7 @@
 
 /*
 This example shows how to address the read and write amplification problem in case of merges,
-in a scenario where we are doing an SCD-type-2-like history consolidation.
+in a scenario where we are doing an SCD-type-2-like history consolidation logic.
 
 History consolidation logic in a nutshell:
 - your table has a key, a version and a flag stating if it is the last version of the key (schema: id, version, is_last)
@@ -56,6 +56,17 @@ Steps:
   when matched then update set *
   when not matched then insert *
   ```
+
+# What to aim for concretely
+
+In the Spark UI, tab "SQL / DataFrame", for a given merge there will be many SQL queries with a description
+like: "Merge - partitions - MERGE operation ...". One of those queries will contain the first of the two merge 
+joins (will be an 'inner' join, which can be seen through the tooltip text of the 'BroadcastHashJoin' operator). 
+In one of the the scan parquet nodes before the join you should observe the following:
+- number of files read: less than the total
+- number of output rows: way less than the total
+- number of partitions read: only 1 partition read
+
 */
 
 // COMMAND ----------
