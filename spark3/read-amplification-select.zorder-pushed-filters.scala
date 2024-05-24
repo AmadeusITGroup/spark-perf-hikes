@@ -3,31 +3,50 @@
 // Databricks: ...
 
 /*
-This snippet demonstrates the benefits of DeltaTable optimization executeZOrderBy:
-it starts by preparing a delta table with 5 partitions based on test dataset  optd_por_public_filtered, then
-shows how optimization with ZOrder can serve specific usage.
+This example shows how to address the read amplification problem in case of select queries on a delta table, 
+using a data skipping friendly data layout obtained z-ordering the table.
 
 References:
- - https://docs.delta.io/2.0.0/optimizations-oss.html#z-ordering-multi-dimensional-clustering
+- https://docs.databricks.com/en/delta/data-skipping.html#delta-zorder
 
 # Symptom
-If not particulary specified, data are heterogeneously distributed within files in Delta tables.
+
+You are running a select query on a delta table and you are reading way more data than actually needed,
+since your result-set is really small.
 
 # Explanation
-Data stored in Delta tables can be optimized with usage centric settings.
+
+In this example we create a delta table composed by 5 parquet files, and we run a select query, filtering 
+on the 'country_code' column, before and after having z-odered the table on such column.
+
+Before z-ordering the table, we observe that each parquet file contains values of the 'country_code' 
+that span over the whole domain (AE to ZW).
+Furthermore, the select query needs to read all the table files. This is visible in the 'number of files read' metric,
+in the Scan Parquet node of the Spark Plan corresponding to such query (Spark UI, SQL/Dataframe tab).
+
+After z-ordering the table, we observe that country codes are well sorted and colocated in the parquet files.
+This colocality is used in the select query, that now only reads 1 file.
+In the query details we observe that a filter push down took place:
+
+PushedFilters: [IsNotNull(country_code), EqualTo(country_code,IT)]
+
+# What to aim for concretely
+
+In the execution plan of the query, there should be pushed filters on the column we have done z-order on.
+These filters should reduce the amount of files read metric, visible in the scan parquet node for the query.
 
 */
+
 import java.util.UUID
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.SparkSession
 
 val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
-
-//inputDir will store data as DeltaTable.
 val inputDir = tmpPath + "/input"
 
 val spark: SparkSession = SparkSession.active
+spark.conf.set("spark.sql.adaptive.enabled", false)
 
 spark.sparkContext.setJobDescription("Read input CSV")
 val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
@@ -69,13 +88,13 @@ def selectQuery(tablePath: String, tag: String): Unit = {
 showMaxMinStats(inputDir, "country_code", 0)
 selectQuery(inputDir, "NO ZORDER")
 
-spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
 //Exectute the optimize command
+spark.sparkContext.setJobDescription("OPTIMIZE with Z-ORDER")
+spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
 DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code") 
 
 // show that files have data that is well organized now
 showMaxMinStats(inputDir, "country_code", 1)
 selectQuery(inputDir, "ZORDER")
 
-// Check the Databricks Spark UI to see the amount of files read for the same select query before and after z-order.
-// TODO: it works also in local, WHY? It's supposed to work only with delta on Databricks (cf. https://docs.databricks.com/en/delta/data-skipping.html)
+// Check the Spark UI to see the amount of files read for the same select query before and after z-order.
