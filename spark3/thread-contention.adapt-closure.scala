@@ -25,6 +25,11 @@ To solve the issue in your specific situation there are multiple alternatives:
 - fix your closure/udf so that it avoids going through the synchronized code section
 
 Watch out, you will have few seconds to see the Spark UI while the contention is taking place.
+
+# What to aim for concretely
+
+All the 'Executor task launch workers' threads in a worker, upon sampling, should be in state RUNNABLE.
+If not the case, you can check their locks. Threads should not be blocked because the same lock is shared.
 */
 
 // COMMAND ----------
