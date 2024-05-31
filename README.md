@@ -4,6 +4,15 @@
 
 This project contains a collection of code snippets designed for hands-on exploration of Apache Spark functionalities, with a strong focus on performance optimization.
 
+Some problems addressed:
+
+- Spill
+- Thread Contention
+- Read amplification (addressed with partition pruning, DFP, z-ordering, FP, ...)
+- Write amplification (addressed with deletion vectors, ...)
+- Spark UI retention limits
+- ...
+
 Each snippet is pedagogic, self-contained, executable, and focuses on one performance problem providing at least one possible solution.
 
 Thanks to this, the user learns about problems/features by:
@@ -48,7 +57,20 @@ val airports = spark.read.option("delimiter","^").option("header","true").csv(pa
 
 ### Setup the environment
 
-The very first time you use the project you need to do some setup.
+The very first time you use the project you need to do some setup. 
+
+Add the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
+
+```bash
+export PERF_HIKES_PATH=<this-path>
+source $PERF_HIKES_PATH/source.sh # to define the aliases
+```
+
+You can use the project: 
+- locally using **spark-shell** or 
+- remotely using your own **Databricks** workspace
+
+#### Setup the environment based on **spark-shell**
 
 1. Install spark locally and make sure `spark-shell` is in your `PATH`
 
@@ -56,28 +78,31 @@ You can install Apache Spark and the Spark Shell by following the instructions o
 If you want to reproduce as close as possible the expected behavior of each snippet,
 you should install the same version of Spark as the one mentioned in the snippet (at least same major.minor).
 
-2. [optional] Configure the Databricks cli on your machine.
+2. Append the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
 
-   This step is optional, and you have to do it only if you want to run the snippets on Databricks.
+```bash
+export PATH=$PATH:<spark-shell-directory>
+```
+
+3. Then set up some sample datasets running in your shell:
+
+```
+spark-init-datasets-local 
+```
+
+#### Setup the environment based on **Databricks**
+
+1. Configure the Databricks cli on your machine.
+
    Be sure to:
    - install Databricks cli versions 0.205 and above (cf. https://docs.databricks.com/en/dev-tools/cli/tutorial.html)
    - define the Databricks profile (containing name, url and credentials of your Databricks workspace) in your `~/.databrickscfg` file.
 
-3. Add the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
-
-```bash
-export PERF_HIKES_PATH=<this-path>
-export PATH=$PATH:<spark-shell-directory>
-source $PERF_HIKES_PATH/source.sh # to define the aliases
-```
-
-4. Then set up some sample datasets:
+2. Then set up some sample datasets:
 
 ```
-spark-init-datasets-local                                # local runs
-spark-init-datasets-databricks <databricks-profile-name> # for databricks runs
+spark-init-datasets-databricks <databricks-profile-name>
 ```
-
 
 ### Launch a snippet
 
@@ -86,15 +111,6 @@ spark-init-datasets-databricks <databricks-profile-name> # for databricks runs
 ```bash
 spark-run-local <snippet.sc>
 ```
-
-Some problems addressed:
-
-- Spill
-- Thread Contention
-- Read amplification (addressed with partition pruning, DFP, z-ordering, FP, ...)
-- Write amplification (addressed with deletion vectors, ...)
-- Spark UI retention limits
-- ...
 
 #### Launch a snippet _on Databricks_
 
