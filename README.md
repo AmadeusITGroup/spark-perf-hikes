@@ -106,10 +106,10 @@ spark-init-datasets-databricks <databricks-profile-name>
 
 ### Launch a snippet
 
-#### Launch a snippet locally
+#### Launch a snippet _locally_
 
 ```bash
-spark-run-local <snippet.sc>
+spark-run-local <snippet.scala>
 ```
 
 #### Launch a snippet _on Databricks_
@@ -117,7 +117,7 @@ spark-run-local <snippet.sc>
 First copy the snippet you want to your Databricks workspace:
 
 ```
-spark-import-databricks <snippet.sc> <databricks-profile-name> <destination-folder> <extra-args: e.g., --overwrite>
+spark-import-databricks <snippet.scala> <databricks-profile-name> <destination-folder> <extra-args: e.g., --overwrite>
 ```
 
 Then run it as a notebook.
@@ -151,7 +151,7 @@ lazy val root = (project in file("."))
 
 A new snippet must honor the description and the structure provided above.
 
-The naming convention is: <problem-description>.<solution-description>.sc
+The naming convention is: `<problem-description>.<solution-description>.scala`
 
 ### Create a Pull Request
 
