@@ -2,6 +2,8 @@
 // Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 // Databricks: ...
 
+// COMMAND ----------
+
 /*
 This example shows how to address the read amplification problem in case of select queries on a delta table, 
 using a data skipping friendly data layout obtained z-ordering the table.
@@ -37,6 +39,8 @@ These filters should reduce the amount of files read metric, visible in the scan
 
 */
 
+// COMMAND ----------
+
 import java.util.UUID
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.SparkSession
@@ -53,6 +57,8 @@ val airports = spark.read.option("delimiter","^").option("header","true").csv(in
 
 spark.sparkContext.setJobDescription("Format input CSV into delta (multiple files)")
 airports.repartition(5).write.format("delta").save(inputDir)
+
+// COMMAND ----------
 
 def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
   // stats on parquet files added to the table
@@ -84,14 +90,20 @@ def selectQuery(tablePath: String, tag: String): Unit = {
   println(c)
 }
 
+// COMMAND ----------
+
 // show that files have data that is not well organized (ranges max/min values overlap for different files)
 showMaxMinStats(inputDir, "country_code", 0)
 selectQuery(inputDir, "NO ZORDER")
+
+// COMMAND ----------
 
 //Exectute the optimize command
 spark.sparkContext.setJobDescription("OPTIMIZE with Z-ORDER")
 spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
 DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code") 
+
+// COMMAND ----------
 
 // show that files have data that is well organized now
 showMaxMinStats(inputDir, "country_code", 1)

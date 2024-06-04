@@ -66,6 +66,14 @@ function spark-import-databricks() {
   databricks workspace import  $dst --profile $profile --language SCALA --file $src $extraargs 
 }
 
+function spark-import-all-databricks() {
+  local srcdir=$1
+  local profile=$2
+  local dst=$3
+  local extraargs=$4
+  for f in `ls $srcdir`; do spark-import-databricks $srcdir/$f $profile $dst $extraargs; done
+}
+
 function spark-init-datasets-databricks() {
   local profile=$1
   spark-init-datasets-local
