@@ -32,9 +32,11 @@ Some solutions:
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.scheduler._
-import spark.implicits._
 
 val spark: SparkSession = SparkSession.active
+import spark.implicits._
+
+// COMMAND ----------
 
 case class JobMetrics(jobId: Int, jobDescription: String, jobGroup: String, sqlId: String, inputReadMb: Float, outputWriteMb: Float, shuffleReadMb: Float, shuffleWriteMb: Float, execCpuSecs: Float, spillMb: Float, stages: Int)
 class OurListener() extends SparkListener {
@@ -80,16 +82,21 @@ class OurListener() extends SparkListener {
   }
 }
 
+val listener = new OurListener()
+spark.sparkContext.addSparkListener(listener)
+
+// COMMAND ----------
+
 spark.conf.set("spark.sql.adaptive.enabled", false) // make executions more predicatable
 
 val inputPath = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(inputPath)
-val listener = new OurListener()
-spark.sparkContext.addSparkListener(listener)
 Range.inclusive(1, 30000, 10000) foreach { n => // 3 jobs will be launched, but we will see less in Spark UI because of spark.ui.retainedJobs
   spark.sparkContext.setJobGroup(groupId = s"Group $n", description = s"Write with repartition ${n}")
   df.repartition(n).write.format("noop").mode("overwrite").save() // more repartition = more overhead = slower job
 }
+
+// COMMAND ----------
 
 listener.jobMetrics.toDS.orderBy("execCpuSecs").show(false)
 // As per the proposed solutions above:
