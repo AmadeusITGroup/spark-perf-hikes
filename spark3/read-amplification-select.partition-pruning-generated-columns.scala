@@ -85,6 +85,6 @@ q1.explain(true) // PartitionFilters: []... no partition pruning
 q1.show(false)
 
 spark.sparkContext.setJobDescription("With partition pruning")
-val q1 = spark.sql(s"SELECT * FROM delta.`${delta}` WHERE datetime_pp > '2022-01'")
-q1.explain(true) // PartitionFilters: [((year_pp#2105 >= year(cast(2022-01-01 00:00:00 as date))) ... some partition pruning
-q1.show(false)
+val q2 = spark.sql(s"SELECT * FROM delta.`${delta}` WHERE datetime_pp > '2022-01'")
+q2.explain(true) // PartitionFilters: [((year_pp#2105 >= year(cast(2022-01-01 00:00:00 as date))) ... some partition pruning
+q2.show(false)
