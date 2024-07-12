@@ -4,6 +4,8 @@
 
 This project contains a collection of code snippets designed for hands-on exploration of Apache Spark functionalities, with a strong focus on performance optimization.
 
+**It is the core of [the breakout session "Drastically Reducing Processing Costs with Delta Lake" presented during the Data+AI Summit edition 2024](https://www.databricks.com/dataaisummit/session/drastically-reducing-processing-costs-delta-lake).**
+
 Some problems addressed:
 
 - Spill
