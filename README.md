@@ -6,6 +6,8 @@ This project contains a collection of code snippets designed for hands-on explor
 
 **It is the core of [the breakout session "Drastically Reducing Processing Costs with Delta Lake" presented during the Data+AI Summit edition 2024](https://www.databricks.com/dataaisummit/session/drastically-reducing-processing-costs-delta-lake).**
 
+<iframe width="560" height="315" src="https://www.youtube.com/embed/YjJ_4HrTAGU?si=sgmImUQEf47bTxR3" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 Some problems addressed:
 
 - Spill
