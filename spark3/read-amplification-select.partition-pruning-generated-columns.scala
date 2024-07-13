@@ -74,17 +74,22 @@ val df = Seq(
 ).toDF("id", "datetime").
 withColumn("datetime_pp", col("datetime")). // datetime_pp == datetime
 withColumn("year", year(col("datetime"))) // year computed as SQL builtin function from datetime
+
+// COMMAND ----------
+
 df.write.format("delta").mode("append").saveAsTable(s"delta.`${delta}`")
 
-spark.sparkContext.setJobDescription("EXPLORATORY SELECT")
-spark.sql(s"SELECT * FROM delta.`${delta}` ORDER BY id").show()
+// COMMAND ----------
 
-spark.sparkContext.setJobDescription("No partition pruning")
+spark.sparkContext.setJobGroup("Select", "No partition pruning")
 val q1 = spark.sql(s"SELECT * FROM delta.`${delta}` WHERE datetime > '2022-01'")
 q1.explain(true) // PartitionFilters: []... no partition pruning
 q1.show(false)
 
-spark.sparkContext.setJobDescription("With partition pruning")
+// COMMAND ----------
+
+spark.sparkContext.setJobGroup("Select", "With partition pruning")
 val q2 = spark.sql(s"SELECT * FROM delta.`${delta}` WHERE datetime_pp > '2022-01'")
 q2.explain(true) // PartitionFilters: [((year_pp#2105 >= year(cast(2022-01-01 00:00:00 as date))) ... some partition pruning
 q2.show(false)
+
