@@ -1,3 +1,4 @@
+// Databricks notebook source
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
 // Databricks: ...
@@ -6,7 +7,7 @@
 
 /*
 This example shows how to address the read and write amplification problem in case of merges,
-in a scenario where we are doing an SCD-type-2-like history consolidation.
+in a scenario where we are doing an SCD-type-2-like history consolidation logic.
 
 History consolidation logic in a nutshell:
 - your table has a key, a version and a flag stating if it is the last version of the key (schema: id, version, is_last)
@@ -56,6 +57,17 @@ Steps:
   when matched then update set *
   when not matched then insert *
   ```
+
+# What to aim for concretely
+
+In the Spark UI, tab "SQL / DataFrame", for a given merge there will be many SQL queries with a description
+like: "Merge - partitions - MERGE operation ...". One of those queries will contain the first of the two merge 
+joins (will be an 'inner' join, which can be seen through the tooltip text of the 'BroadcastHashJoin' operator). 
+In one of the the scan parquet nodes before the join you should observe the following:
+- number of files read: less than the total
+- number of output rows: way less than the total
+- number of partitions read: only 1 partition read
+
 */
 
 // COMMAND ----------
@@ -74,6 +86,8 @@ val partitionedTable = tmpPath + "/partitioned"
 val numVersions = 100
 
 val spark: SparkSession = SparkSession.active
+
+spark.conf.set("spark.sql.adaptive.enabled", false)
 
 // COMMAND ----------
 
@@ -123,8 +137,9 @@ def toDelta(df: DataFrame): DataFrame = {
 // id, 101, true
 // id, 100, false
 def buildDataframeToMergeSCD(id: String, deltaDir: String, condition: String = "1 = 1"): DataFrame = {
-  val keyVersions = DeltaTable.forPath(deltaDir).toDF.filter(s"id = '$id'").filter(condition)
-  val union = keyVersions union newVersion(id, numVersions + 1)
+  val input = newVersion(id, numVersions + 1).cache()
+  val keyVersions = DeltaTable.forPath(deltaDir).toDF.filter(condition).join(input, "id", "leftsemi")
+  val union = keyVersions union input
   val groupByKeyOrderByVersion = Window.partitionBy("id").orderBy(desc("version"))
   val df = union.withColumn("r", row_number().over(groupByKeyOrderByVersion)).withColumn("is_last", col("r") === 1).drop("r")
   toDelta(df)

@@ -1,3 +1,4 @@
+// Databricks notebook source
 // Spark: 3.5.1
 // Local: --master 'local[2]' --driver-memory 1G
 // Databricks: ...
@@ -12,8 +13,13 @@ References:
 - https://medium.com/road-to-data-engineering/spark-performance-optimization-series-2-spill-685126e9d21f
 
 # Symptom
-A stage is particularly slow, and IO is high.
+The tasks of a stage are particularly slow, and IO is high in the CPU curves.
+In the Spark UI, there should be no mention of Spill.
 
+# What to aim for concretely
+The listener/Spark UI shows no stages with spill.
+You should not see in logs anything like:
+INFO ExternalSorter: Task 1 force spilling in-memory map to disk it will release X MB memory
 */
 
 // COMMAND ----------
@@ -69,11 +75,13 @@ dfs.orderBy("name").write.format("noop").mode("overwrite").save()
 spillListener.report()
 // Explore the Spark UI and look for spills on the Stages or SQL sections.
 
-// The spill job is made of 2 stages. The second stage, that reads large shuffled data, cannot cope with all of it in a reduced amount 
-// of partitions (1 in the spilling example), and has to spill. 
+// The spill job is made of 2 stages. The second stage, that reads large shuffled data, cannot cope 
+// with all of it in a reduced amount of partitions (1 in the spilling example), 
+// and has to spill. 
 
-// Identify it in Spark UI: find the job, open its second stage, go to Tasks and see "Spill (Memory)" and "Spill (Disk)".
+// Identify it in Spark UI: find the job, open its second stage, go to Tasks and see "Spill (Memory)" 
+// and "Spill (Disk)".
 // Mind that Spill fields not shown in case of no spill.
-// Also you can go to the SQL / DataFrame section, select the spill query, and see metrics for Sort: spill size.
+// Also you can go to the SQL / DataFrame section, select the spill query, 
+// and see metrics for Sort: spill size.
 
-// In logs: look for something like: "INFO ExternalSorter: Task 1 force spilling in-memory map to disk it will release 232.1 MB memory"

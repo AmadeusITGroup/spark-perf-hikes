@@ -4,6 +4,19 @@
 
 This project contains a collection of code snippets designed for hands-on exploration of Apache Spark functionalities, with a strong focus on performance optimization.
 
+It is the core of [the breakout session "Drastically Reducing Processing Costs with Delta Lake" presented during the Data+AI Summit edition 2024](https://www.databricks.com/dataaisummit/session/drastically-reducing-processing-costs-delta-lake).
+
+[![Watch the video](http://img.youtube.com/vi/YjJ_4HrTAGU/0.jpg)](https://youtu.be/YjJ_4HrTAGU)
+
+Some problems addressed:
+
+- Spill
+- Thread Contention
+- Read amplification (addressed with partition pruning, DFP, z-ordering, FP, ...)
+- Write amplification (addressed with deletion vectors, ...)
+- Spark UI retention limits
+- ...
+
 Each snippet is pedagogic, self-contained, executable, and focuses on one performance problem providing at least one possible solution.
 
 Thanks to this, the user learns about problems/features by:
@@ -19,7 +32,7 @@ A typical snippet has the folowing structure:
 ```scala
 // Spark: <version of spark this snippet is intended to be used with>
 // Local: <spark shell extra options when used locally, e.g. --master local[2] --driver-memory 1G >
-// Databricks: <placeholder, unused for now>
+// Databricks: <details about runtime used to test the snipped, unused for now>
 
 // COMMAND ----------
 
@@ -31,6 +44,9 @@ A typical snippet has the folowing structure:
 
 # Explanation
 <explanation of the potential solution, the analysis or any other detail about how to address the problem>
+
+# What to aim for concretely
+<concrete steps to get to the metrics / indicator that the solution proposed is working properly>
 */
 
 // COMMAND ----------
@@ -45,7 +61,20 @@ val airports = spark.read.option("delimiter","^").option("header","true").csv(pa
 
 ### Setup the environment
 
-The very first time you use the project you need to do some setup.
+The very first time you use the project you need to do some setup. 
+
+Add the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
+
+```bash
+export PERF_HIKES_PATH=<this-path>
+source $PERF_HIKES_PATH/source.sh # to define the aliases
+```
+
+You can use the project: 
+- locally using **spark-shell** or 
+- remotely using your own **Databricks** workspace
+
+#### Setup the environment based on **spark-shell**
 
 1. Install spark locally and make sure `spark-shell` is in your `PATH`
 
@@ -53,52 +82,46 @@ You can install Apache Spark and the Spark Shell by following the instructions o
 If you want to reproduce as close as possible the expected behavior of each snippet,
 you should install the same version of Spark as the one mentioned in the snippet (at least same major.minor).
 
-2. [optional] Configure the Databricks cli on your machine.
+2. Append the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
 
-   This step is optional, and you have to do it only if you want to run the snippets on Databricks.
+```bash
+export PATH=$PATH:<spark-shell-directory>
+```
+
+3. Then set up some sample datasets running in your shell:
+
+```
+spark-init-datasets-local 
+```
+
+#### Setup the environment based on **Databricks**
+
+1. Configure the Databricks cli on your machine.
+
    Be sure to:
    - install Databricks cli versions 0.205 and above (cf. https://docs.databricks.com/en/dev-tools/cli/tutorial.html)
    - define the Databricks profile (containing name, url and credentials of your Databricks workspace) in your `~/.databrickscfg` file.
 
-3. Add the following to your `~/.bashrc` (`~/.zshrc` for MacOS): 
-
-```bash
-export PERF_HIKES_PATH=<this-path>
-export PATH=$PATH:<spark-shell-directory>
-source $PERF_HIKES_PATH/source.sh # to define the aliases
-```
-
-4. Then set up some sample datasets:
+2. Then set up some sample datasets:
 
 ```
-spark-init-datasets-local                                # local runs
-spark-init-datasets-databricks <databricks-profile-name> # for databricks runs
+spark-init-datasets-databricks <databricks-profile-name>
 ```
-
 
 ### Launch a snippet
 
-#### Launch a snippet locally
+#### Launch a snippet _locally_
 
 ```bash
-spark-run-local <snippet.sc>
+spark-run-local <snippet.scala>
 ```
-
-Some problems addressed:
-
-- Spill
-- Thread Contention
-- Read amplification (addressed with partition pruning, DFP, z-ordering, FP, ...)
-- Write amplification (addressed with deletion vectors, ...)
-- Spark UI retention limits
-- ...
 
 #### Launch a snippet _on Databricks_
 
 First copy the snippet you want to your Databricks workspace:
 
 ```
-spark-import-databricks <snippet.sc> <databricks-profile-name> <destination-folder> <extra-args: e.g., --overwrite>
+spark-import-databricks <snippet.scala> <databricks-profile-name> <destination-folder> <extra-args: e.g., --overwrite>
 ```
 
 Then run it as a notebook.
@@ -132,7 +155,7 @@ lazy val root = (project in file("."))
 
 A new snippet must honor the description and the structure provided above.
 
-The naming convention is: <problem-description>.<solution-description>.sc
+The naming convention is: `<problem-description>.<solution-description>.scala`
 
 ### Create a Pull Request
 
