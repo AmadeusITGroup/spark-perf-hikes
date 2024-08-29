@@ -20,6 +20,7 @@ Long lasting driver time while nothing happens on workers.
 // COMMAND ----------
 
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.functions._
 val spark: SparkSession = SparkSession.active
 
 // Parameters used in this test session:
