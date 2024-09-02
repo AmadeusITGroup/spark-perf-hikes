@@ -1,9 +1,8 @@
+// Databricks notebook source
 // Spark: 3.5.1
-// Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
-// Databricks: ...
+// Local: --master 'local[2]' --driver-memory 1G
 
 // COMMAND ----------
-
 /* Compare performances of multiple .withColumn with one single .withColumns when Spark builds the exection plan.
 
 # Symptom
@@ -20,7 +19,7 @@ Long lasting driver time while nothing happens on workers.
 // COMMAND ----------
 
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.functions._
+import org.apache.spark.sql.functions._
 val spark: SparkSession = SparkSession.active
 
 // Parameters used in this test session:
@@ -127,3 +126,20 @@ block_timer(s"repeat $number_of_action_repeat times collect df_single_call_to_wi
 // Now, re-run the snipped with number_of_records_of_df = 10
 // How does the number of records affects to time to execute Spark actions ?
 
+//COMMAND
+//Checking further the difference between .withColumn and .withColums: let's checkl effects on join
+block_timer(s"Demonstration of join using two df_many_calls_to_withColum  (${columnNames.length} cols)",
+  {
+    //Note: here we rename the "id" column to avoid message "Perhaps you need to use aliases."
+    val d1_many_calls_to_withColum = df_many_calls_to_withColum.withColumnRenamed("id", "id1")
+    val d2_many_calls_to_withColum = df_many_calls_to_withColum.withColumnRenamed("id", "id2")
+    val djoin_many_calls_to_withColum = d1_many_calls_to_withColum.join(d2_many_calls_to_withColum, d1_many_calls_to_withColum("id1") === d2_many_calls_to_withColum("id2"), "inner")
+    djoin_many_calls_to_withColum.explain
+  })
+
+block_timer(s"Demonstration of join using two df_single_call_to_withColumns  (${columnNames.length} cols)", {
+    val d1_single_call_to_withColumns = df_single_call_to_withColumns.withColumnRenamed("id", "id1")
+    val d2_single_call_to_withColumns = df_single_call_to_withColumns.withColumnRenamed("id", "id2")
+    val djoin_single_call_to_withColumns = d1_single_call_to_withColumns.join(d2_single_call_to_withColumns, d1_single_call_to_withColumns("id1") === d2_single_call_to_withColumns("id2"), "inner")
+    djoin_single_call_to_withColumns.explain
+  })
