@@ -6,35 +6,36 @@
 /* Compare performances of multiple .withColumn with one single .withColumns when Spark builds the exection plan.
 
 # Symptom
-Unexplain activity on driver side, sometimes very long, while the workers are doing nothing.
+Unexplained activity on driver side, sometimes very long, while the workers are doing nothing.
 
 # Explanation
 Application code uses a lot of .withColumn(colName: String, col: Column): and does not get benefits of improvements driven by .withColumns(colsMap: Map[String, Column]),
 leading to a useless workload.
 
 # What to aim for concretely
-Long lasting driver time while nothing happens on workers.
+For any given SQL query, we should have no time slots where workers are idle. This can be observed via CPU usage or via the amount of tasks running at any time.
 */
 
 // COMMAND ----------
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
+
 val spark: SparkSession = SparkSession.active
 
 // Parameters used in this test session:
 
 // Number of columns to create using .withColumn and .withColumns
-val number_of_columns_to_create = 100
+val numberOfColumnsToCreate = 100
 // Number of records to create in our dataframe
-val number_of_records_of_df = 10
+val numberOfRecordsInDF = 10
 // Number of times we want to repeat the spark action
-val number_of_action_repeat = 10
+val numberOfActionRepeat = 10
 
 //In order to compare time spent for each steps of the test,
 // timing function prints the elapsed time to execute a given code block.
 // we also set the job description for Spark UI
-def block_timer[T](label: String, block: => T): T = {
+def blockTimer[T](label: String, block: => T): T = {
   spark.sparkContext.setJobDescription(label)
 
   val before = System.nanoTime
@@ -46,51 +47,51 @@ def block_timer[T](label: String, block: => T): T = {
   result
 }
 
-//COMMAND
+// COMMAND ----------
 // for the purpose of our test,
 // we use a dataframe of Int from 0 to 100k
 // let's generate a DF of numbers
-val df = spark.range(0, number_of_records_of_df, 1).toDF
+val df = spark.range(0, numberOfRecordsInDF, 1).toDF
 
 // let's generate a list of column names for this test
 val columnNames = {
-  1 to number_of_columns_to_create toList
+  1 to numberOfColumnsToCreate toList
 }.map(x => "newColumn_" + x.toString)
 
-//COMMAND
+// COMMAND ----------
 /* Let's build the new Dataframe with many calls to .withColumn (colName) */
-var df_many_calls_to_withColum = df
-block_timer(s"Build df_many_calls_to_withColum (${columnNames.length} cols)",
+var dfManyCallsToWithColum = df
+blockTimer(s"Build dfManyCallsToWithColum (${columnNames.length} cols)",
   {
     columnNames.foreach(
       colName => {
-        df_many_calls_to_withColum = df_many_calls_to_withColum.withColumn(colName, lit(null))
+        dfManyCallsToWithColum = dfManyCallsToWithColum.withColumn(colName, lit(null))
       }
     )
   }
 )
 
-/* and le'ts build the new Dataframe with one single call to .withColumn(map_of_columns)
+/* and le'ts build the new Dataframe with one single call to .withColumns(...)
  */
-var df_single_call_to_withColumns = df
-block_timer(s"Build df_single_call_to_withColumns (${columnNames.length} cols)",
+var dfSingleCallToWithColumns = df
+blockTimer(s"Build dfSingleCallToWithColumns (${columnNames.length} cols)",
   {
     val allColumns = columnNames.zip(columnNames.map(_ => lit(null))).toMap
-    df_single_call_to_withColumns = df.withColumns(allColumns)
+    dfSingleCallToWithColumns = df.withColumns(allColumns)
   }
 )
 
-//COMMAND
+// COMMAND ----------
 /* Now, you will have to check the execution plan, in term of complexity and time used
 */
-block_timer(s"Explain df_many_calls_to_withColum (${columnNames.length} cols)",
+blockTimer(s"Explain dfManyCallsToWithColum (${columnNames.length} cols)",
   {
-    df_many_calls_to_withColum.explain("extended")
+    dfManyCallsToWithColum.explain("extended")
   }
 )
-block_timer(s"Explain df_single_call_to_withColumns (${columnNames.length} cols)",
+blockTimer(s"Explain dfSingleCallToWithColumns (${columnNames.length} cols)",
   {
-    df_single_call_to_withColumns.explain("extended")
+    dfSingleCallToWithColumns.explain("extended")
   }
 )
 /* please compare the respective plans
@@ -101,45 +102,48 @@ block_timer(s"Explain df_single_call_to_withColumns (${columnNames.length} cols)
  and also, compare the amount of time  used to build the full plan in both cases.
  */
 
-//COMMAND
+// COMMAND ----------
 /*
 Now we'll check the time to execute
  */
-block_timer(s"repeat $number_of_action_repeat times  collect df_many_calls_to_withColum (${columnNames.length} cols)",
+blockTimer(s"repeat $numberOfActionRepeat times  collect dfManyCallsToWithColum (${columnNames.length} cols)",
   {
-    for (i <- 0 to number_of_action_repeat) {
-      println("counted rows: "+df_many_calls_to_withColum.count)
+    for (i <- 0 to numberOfActionRepeat) {
+      println("counted rows: " + dfManyCallsToWithColum.count)
     }
   }
 )
 
-block_timer(s"repeat $number_of_action_repeat times collect df_single_call_to_withColumns (${columnNames.length} cols)",
+blockTimer(s"repeat $numberOfActionRepeat times collect dfSingleCallToWithColumns (${columnNames.length} cols)",
   {
-    for (i <- 0 to number_of_action_repeat) {
-      println("counted rows: "+df_single_call_to_withColumns.count)
+    for (i <- 0 to numberOfActionRepeat) {
+      println("counted rows: " + dfSingleCallToWithColumns.count)
     }
   }
 )
 
 // Compare the time used to execute the Spark actions.
 
-// Now, re-run the snipped with number_of_records_of_df = 10
+// Now, re-run the snipped with numberOfRecordsInDF = 10
 // How does the number of records affects to time to execute Spark actions ?
 
-//COMMAND
+// COMMAND ----------
 //Checking further the difference between .withColumn and .withColums: let's checkl effects on join
-block_timer(s"Demonstration of join using two df_many_calls_to_withColum  (${columnNames.length} cols)",
+
+//Depending on your environment, the multiple calls to .withColum in DF creatio may lead this example code to a java.lang.RuntimeException from Spark's catalyst ...
+blockTimer(s"Demonstration of join using two dfManyCallsToWithColum  (${columnNames.length} cols)",
   {
     //Note: here we rename the "id" column to avoid message "Perhaps you need to use aliases."
-    val d1_many_calls_to_withColum = df_many_calls_to_withColum.withColumnRenamed("id", "id1")
-    val d2_many_calls_to_withColum = df_many_calls_to_withColum.withColumnRenamed("id", "id2")
-    val djoin_many_calls_to_withColum = d1_many_calls_to_withColum.join(d2_many_calls_to_withColum, d1_many_calls_to_withColum("id1") === d2_many_calls_to_withColum("id2"), "inner")
-    djoin_many_calls_to_withColum.explain
+    val d1ManyCallsToWithColum = dfManyCallsToWithColum.withColumnRenamed("id", "id1")
+    val d2ManyCallsToWithColum = dfManyCallsToWithColum.withColumnRenamed("id", "id2")
+    val djoinManyCallsToWithColum = d1ManyCallsToWithColum.join(d2ManyCallsToWithColum, d1ManyCallsToWithColum("id1") === d2ManyCallsToWithColum("id2"), "inner")
+    djoinManyCallsToWithColum.explain
   })
 
-block_timer(s"Demonstration of join using two df_single_call_to_withColumns  (${columnNames.length} cols)", {
-    val d1_single_call_to_withColumns = df_single_call_to_withColumns.withColumnRenamed("id", "id1")
-    val d2_single_call_to_withColumns = df_single_call_to_withColumns.withColumnRenamed("id", "id2")
-    val djoin_single_call_to_withColumns = d1_single_call_to_withColumns.join(d2_single_call_to_withColumns, d1_single_call_to_withColumns("id1") === d2_single_call_to_withColumns("id2"), "inner")
-    djoin_single_call_to_withColumns.explain
-  })
+//... whereas this execution passes.
+blockTimer(s"Demonstration of join using two dfSingleCallToWithColumns  (${columnNames.length} cols)", {
+  val d1SingleCallToWithColumns = dfSingleCallToWithColumns.withColumnRenamed("id", "id1")
+  val d2SingleCallToWithColumns = dfSingleCallToWithColumns.withColumnRenamed("id", "id2")
+  val djoinSingleCallToWithColumns = d1SingleCallToWithColumns.join(d2SingleCallToWithColumns, d1SingleCallToWithColumns("id1") === d2SingleCallToWithColumns("id2"), "inner")
+  djoinSingleCallToWithColumns.explain
+})
