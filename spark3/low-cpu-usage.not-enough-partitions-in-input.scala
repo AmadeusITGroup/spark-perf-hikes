@@ -1,25 +1,44 @@
 // Databricks notebook source
 // Spark: 3.5.1
-// Local: --driver-memory 1G --master 'local[4]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Local: --driver-memory 1G --master 'local[4]'
 // Databricks: ...
 
 // COMMAND ----------
 
 /*
-This example shows ...
+This example shows how to identify and solve the problem of low CPU usage when reading a input dataframe that yields less
+partitions than the total amount of cores available.
 
 # Symptom
 
+For a given Job, the CPU usage is low for long periods of time (even when scaling up / out the cluster).
+In the Spark UI (live), the 'Executors' tab / 'Active Tasks' metrics much lower than the 'Cores' metric for a while.
+This happens in the first stage of a job.
+
 # Explanation
 
+The Spark stage related to the input dataset read has not enough tasks to fit available cores, hence preventing the optimal
+distribution of the work across the available cores of the cluster.
+
+In this example we take advantage of the splitability of .parquet files, which allows to have multiple partitions for a
+single file. The setting being used is 'spark.sql.files.maxPartitionBytes'. Mind that not all data storage formats
+are splittable by design. For instance .parquet is splittable, while .csv compressed with GZIP is not. In the case of
+consuming a non-splittable format you wll be forced to do a repartition of the input dataset to achieve similar speedups.
+
 # What to aim for concretely
+
+During most of the duration of the job, the amount of active tasks is similar to the total amount of cores.
+
+In Databricks, it is possible to see post-mortem the use of CPU along the duration of the whole application. Go to the
+cluster running the application, see 'Spark' / 'Active tasks', the curve should stay steadily as high as the total number
+of cores available in the cluster.
+
 */
 
 // COMMAND ----------
 
 
 import java.util.UUID
-import io.delta.tables.DeltaTable
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 val spark: SparkSession = SparkSession.active
