@@ -60,7 +60,8 @@ airports.repartition(1).write.format("parquet").save(tmpPath + "/input") // crea
 // Scenario with 1 partition, default spark.sql.files.maxPartitionBytes
 spark.sparkContext.setJobDescription("Read input (as 1 partition)")
 val df1 = spark.read.format("parquet").load(tmpPath + "/input")
-df1.toJavaRDD.partitions.size // what's the number of partitions?
+df1.toJavaRDD.partitions.size // what's the number of partitions calculated?
+df1.withColumn("part_id", spark_partition_id()).groupBy("part_id").count().show() // what's the distribution of records per partition?
 
 spark.sparkContext.setJobDescription("Write input (as 1 partition)")
 df1.write.format("noop").mode("overwrite").save()
@@ -71,7 +72,8 @@ df1.write.format("noop").mode("overwrite").save()
 spark.sparkContext.setJobDescription("Read input (as multiple partitions)")
 spark.conf.set("spark.sql.files.maxPartitionBytes", 1024*125)
 val df2 = spark.read.format("parquet").load(tmpPath + "/input")
-df2.toJavaRDD.partitions.size // what's the number of partitions?
+df2.toJavaRDD.partitions.size // what's the number of partitions calculated?
+df2.withColumn("part_id", spark_partition_id()).groupBy("part_id").count().show() // what's the distribution of records per partition?
 
 spark.sparkContext.setJobDescription("Write input (as multiple partitions)")
 df2.write.format("noop").mode("overwrite").save()
