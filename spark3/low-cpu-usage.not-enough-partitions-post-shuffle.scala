@@ -17,7 +17,7 @@ This happens not in the first stage of a job, but in later ones (post-shuffle).
 
 # Explanation
 
-A post-shuffle stage (non-first stage of a job containing join, distinct, group by, ...). is made of tasks.
+A post-shuffle stage (non-first stage of a job containing join, distinct, group by, ...) is made of tasks as any other stage.
 The amount of tasks of such kind of stages needs to be enough to fit them into available cores. By doing this we optimally
 distribute the work across the available cores of the cluster.
 
