@@ -34,6 +34,11 @@ consuming a non-splittable format you wll be forced to do a repartition of the i
 The amount of row-groups in a given parquet file can be analysed using [parquet-tools](https://pypi.org/project/parquet-tools/), 
 option 'inspect'.
 
+References: 
+- https://celerdata.com/glossary/parquet-file-format#:~:text=Typical%20row%20group%20sizes%20in,on%20the%20specific%20use%20case.
+- https://mageswaran1989.medium.com/a-dive-into-apache-spark-parquet-reader-for-small-file-sizes-fabb9c35f64e
+
+
 Summary: if you have less tasks (pre-shuffle) than cores, try decreasing spark.sql.files.maxPartitionBytes (hopefully input files
 will have multiple row-groups that had been grouped together), if it does not work you are forced to do a .repartition().
 

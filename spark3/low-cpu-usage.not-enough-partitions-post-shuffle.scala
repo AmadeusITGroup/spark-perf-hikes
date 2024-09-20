@@ -26,6 +26,7 @@ References:
 - https://spark.apache.org/docs/latest/rdd-programming-guide.html#shuffle-operations
 
 The amount of partitions/tasks present in a post-shuffle stage is driven by the parameter 'spark.sql.shuffle.partitions'.
+In Databricks it is possible set the value 'auto' to let Spark figure out the best value automatically.
 
 # What to aim for concretely
 
