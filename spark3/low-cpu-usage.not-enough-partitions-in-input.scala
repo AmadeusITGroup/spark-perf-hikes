@@ -98,7 +98,7 @@ df1.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 // COMMAND ----------
 
 // Scenario with many partitions
-spark.conf.set("spark.sql.files.maxPartitionBytes", 1024*1024)
+spark.conf.set("spark.sql.files.maxPartitionBytes", 128*1024)
 spark.sparkContext.setJobDescription("Read input (many partitions)")
 val df2 = spark.read.format("parquet").load(tmpPath + "/input2")
 showPartitions(df2) // what's the distribution of records per partition?
