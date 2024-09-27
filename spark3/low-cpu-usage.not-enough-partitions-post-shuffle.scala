@@ -1,7 +1,7 @@
 // Databricks notebook source
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[4]'
-// Databricks: ...
+// Databricks: cluster with 8 cores
 
 // COMMAND ----------
 
@@ -56,29 +56,34 @@ val airports = spark.read.option("delimiter","^").option("header","true").csv(in
 
 // COMMAND ----------
 
-spark.sparkContext.setJobDescription("Initialize input table")
-Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).write.format("parquet").save(tmpPath + "/input")
+spark.sparkContext.setJobDescription("Initialize input tables")
+Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).write.format("parquet").save(tmpPath + "/input1")
+Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).write.format("parquet").save(tmpPath + "/input2")
+
+// COMMAND ----------
+
+val expensiveProcessing = "sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(wiki_link))))))))))))))))))))))"
 
 // COMMAND ----------
 
 // Scenario with 1 post-shuffle partition, spark.sql.shuffle.partitions=1
 spark.sparkContext.setJobDescription("Read (1 post-shuffle partition)")
 spark.conf.set("spark.sql.shuffle.partitions", "1")
-val df1 = spark.read.format("parquet").load(tmpPath + "/input")
+val df1 = spark.read.format("parquet").load(tmpPath + "/input1")
 spark.sparkContext.setJobDescription("Shuffle (1 post-shuffle partition)")
-df1.distinct().write.format("noop").mode("overwrite").save()
+df1.distinct().selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save()
 
 // COMMAND ----------
 
 // Scenario with multiple post-shuffle partitions, spark.sql.shuffle.partitions=4
-spark.sparkContext.setJobDescription("Read (4 post-shuffle partitions)")
-spark.conf.set("spark.sql.shuffle.partitions", "4")
-val df2 = spark.read.format("parquet").load(tmpPath + "/input")
-spark.sparkContext.setJobDescription("Shuffle (4 post-shuffle partitions)")
-df2.distinct().write.format("noop").mode("overwrite").save()
+spark.sparkContext.setJobDescription("Read (8 post-shuffle partitions)")
+spark.conf.set("spark.sql.shuffle.partitions", "8")
+val df2 = spark.read.format("parquet").load(tmpPath + "/input2")
+spark.sparkContext.setJobDescription("Shuffle (8 post-shuffle partitions)")
+df2.distinct().selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save()
 // It is possible to see the setting in the Spark UI, Tab 'SQL / DataFrame' then 'SQL / DataFrame Properties'
 
 // In the 'Jobs' tab, the 'save' action for each scenario is represented by 1 job 'Shuffle...'
 // Mind that those jobs are very different:
 // - for 'Shuffle (1...partitions)' job: 2 stages, the last stage (post-shuffle) has 1 task, longer duration
-// - for 'Shuffle (4...partitions)' job: 2 stages, the last stage (post-shuffle) has 4 tasks, shorter duration
+// - for 'Shuffle (8...partitions)' job: 2 stages, the last stage (post-shuffle) has 8 tasks, shorter duration
