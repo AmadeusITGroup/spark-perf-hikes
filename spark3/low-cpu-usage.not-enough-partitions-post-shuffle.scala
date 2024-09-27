@@ -43,6 +43,7 @@ of cores available in the cluster.
 
 import java.util.UUID
 import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
 
 val spark: SparkSession = SparkSession.active
 
