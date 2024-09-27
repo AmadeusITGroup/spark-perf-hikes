@@ -38,7 +38,6 @@ References:
 - https://celerdata.com/glossary/parquet-file-format#:~:text=Typical%20row%20group%20sizes%20in,on%20the%20specific%20use%20case.
 - https://mageswaran1989.medium.com/a-dive-into-apache-spark-parquet-reader-for-small-file-sizes-fabb9c35f64e
 
-
 Summary: if you have less tasks (pre-shuffle) than cores, try decreasing spark.sql.files.maxPartitionBytes (hopefully input files
 will have multiple row-groups that had been grouped together), if it does not work you are forced to do a .repartition().
 
@@ -57,8 +56,11 @@ of cores available in the cluster.
 
 import java.util.UUID
 import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
 
 val spark: SparkSession = SparkSession.active
+
+spark.conf.set("spark.sql.files.maxPartitionBytes", 128*1024*1024) // 128 MB, setting it to have idempotent re-runs on the same cluster
 
 spark.conf.set("spark.sql.adaptive.enabled", false)
 val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
@@ -67,7 +69,7 @@ val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 spark.sparkContext.setJobDescription("Read CSV")
 val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
 
-def showParitions(df: DataFrame) = df.withColumn("part_id", spark_partition_id()).groupBy("part_id").count().selectExpr("count(distinct(part_id)) as legit_partitions", "max(count) as max_records", "min(count) as min_records").show()
+def showPartitions(df: DataFrame) = df.withColumn("part_id", spark_partition_id()).groupBy("part_id").count().selectExpr("count(distinct(part_id)) as legit_partitions", "max(count) as max_records", "min(count) as min_records").show()
 
 // COMMAND ----------
 
@@ -75,9 +77,9 @@ spark.sparkContext.setJobDescription("Initialize input table")
 spark.conf.set("parquet.block.size", 1024 * 1024) // size of the row-group is 1MB
 
 // single parquet file, roughly 4MB each (we create multiple input datasets to avoid warmup effects)
-Range(1,10).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input1")
-Range(1,10).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input2")
-Range(1,10).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input3")
+Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input1")
+Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input2")
+Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input3")
 
 // COMMAND ----------
 
@@ -88,7 +90,7 @@ val expensiveProcessing = "sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(s
 // Scenario with few partitions
 spark.sparkContext.setJobDescription("Read input (few partitions)")
 val df1 = spark.read.format("parquet").load(tmpPath + "/input1")
-showParitions(df1) // what's the distribution of records per partition?
+showPartitions(df1) // what's the distribution of records per partition?
 
 spark.sparkContext.setJobDescription("Write input (few partitions)")
 df1.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save()
@@ -99,7 +101,7 @@ df1.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 spark.conf.set("spark.sql.files.maxPartitionBytes", 128*1024)
 spark.sparkContext.setJobDescription("Read input (many partitions)")
 val df2 = spark.read.format("parquet").load(tmpPath + "/input2")
-showParitions(df2) // what's the distribution of records per partition?
+showPartitions(df2) // what's the distribution of records per partition?
 
 spark.sparkContext.setJobDescription("Write input (many partitions)")
 df2.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save()
@@ -111,7 +113,7 @@ df2.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 spark.sparkContext.setJobDescription("Read input (repartitioned)")
 val df3 = spark.read.format("parquet").load(tmpPath + "/input3")
 spark.sparkContext.setJobDescription("Write input (repartitioned)")
-df3.repartition(4).selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save()
+df3.repartition(8*3).selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save()
 
 // COMMAND ----------
 
