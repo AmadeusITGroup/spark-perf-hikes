@@ -1,7 +1,7 @@
 // Databricks notebook source
 // Spark: 3.5.1
-// Local: --driver-memory 1G --master 'local[4]'
-// Databricks: ...
+// Local: --driver-memory 1G --master 'local[8]'
+// Databricks: cluster with 8 cores
 
 // COMMAND ----------
 
@@ -98,7 +98,7 @@ df1.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 // COMMAND ----------
 
 // Scenario with many partitions
-spark.conf.set("spark.sql.files.maxPartitionBytes", 128*1024)
+spark.conf.set("spark.sql.files.maxPartitionBytes", 1024*1024)
 spark.sparkContext.setJobDescription("Read input (many partitions)")
 val df2 = spark.read.format("parquet").load(tmpPath + "/input2")
 showPartitions(df2) // what's the distribution of records per partition?
@@ -122,3 +122,5 @@ df3.repartition(8*3).selectExpr(expensiveProcessing).write.format("noop").mode("
 // - for 'Write input (few partitions)': few tasks, longer duration overall
 // - for 'Write input (many partitions)': many tasks, shorter duration overall
 // - for 'Write input (repartitioned)': many tasks, shorter duration overall
+// WARNING: these observations have been made on a Databricks cluster with 2 workers having 4 cores each. 
+// To get similar results in local, try to increase the size of the files (e.g. using Range(1,100) in cell 4).
