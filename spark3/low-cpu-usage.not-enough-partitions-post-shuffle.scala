@@ -13,7 +13,7 @@ tasks than the total amount of cores available.
 
 For a given Job, the CPU usage is low for long periods of time (even when scaling up / out the cluster).
 In the Spark UI (live), the 'Executors' tab / 'Active Tasks' metrics much lower than the 'Cores' metric for a while.
-This happens not in the first stage of a job, but in later ones (post-shuffle).
+This does not happen in the first stage of a job, but in later ones (post-shuffle).
 
 # Explanation
 
@@ -40,6 +40,7 @@ of cores available in the cluster.
 
 // COMMAND ----------
 
+// DBTITLE 1,Setup
 
 import java.util.UUID
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -66,6 +67,7 @@ val expensiveProcessing = "sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(s
 
 // COMMAND ----------
 
+// DBTITLE 1,Scenario 1: spark.sql.shuffle.partitions=1
 // Scenario with 1 post-shuffle partition, spark.sql.shuffle.partitions=1
 spark.sparkContext.setJobDescription("Read (1 post-shuffle partition)")
 spark.conf.set("spark.sql.shuffle.partitions", "1")
@@ -75,7 +77,8 @@ df1.distinct().selectExpr(expensiveProcessing).write.format("noop").mode("overwr
 
 // COMMAND ----------
 
-// Scenario with multiple post-shuffle partitions, spark.sql.shuffle.partitions=4
+// DBTITLE 1,Scenario 2: spark.sql.shuffle.partitions=8
+// Scenario with multiple post-shuffle partitions, spark.sql.shuffle.partitions=8
 spark.sparkContext.setJobDescription("Read (8 post-shuffle partitions)")
 spark.conf.set("spark.sql.shuffle.partitions", "8")
 val df2 = spark.read.format("parquet").load(tmpPath + "/input2")

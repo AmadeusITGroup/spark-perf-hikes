@@ -53,6 +53,7 @@ of cores available in the cluster.
 
 // COMMAND ----------
 
+// DBTITLE 1,Setup
 
 import java.util.UUID
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -87,6 +88,7 @@ val expensiveProcessing = "sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(s
 
 // COMMAND ----------
 
+// DBTITLE 1,Scenario with few partitions
 // Scenario with few partitions
 spark.sparkContext.setJobDescription("Read input (few partitions)")
 val df1 = spark.read.format("parquet").load(tmpPath + "/input1")
@@ -97,6 +99,7 @@ df1.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 
 // COMMAND ----------
 
+// DBTITLE 1,Scenario with many partitions
 // Scenario with many partitions
 spark.conf.set("spark.sql.files.maxPartitionBytes", 128*1024)
 spark.sparkContext.setJobDescription("Read input (many partitions)")
@@ -109,6 +112,7 @@ df2.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 
 // COMMAND ----------
 
+// DBTITLE 1,Scenario with repartition
 // Scenario with repartition
 spark.sparkContext.setJobDescription("Read input (repartitioned)")
 val df3 = spark.read.format("parquet").load(tmpPath + "/input3")
@@ -123,4 +127,4 @@ df3.repartition(8*3).selectExpr(expensiveProcessing).write.format("noop").mode("
 // - for 'Write input (many partitions)': many tasks, shorter duration overall
 // - for 'Write input (repartitioned)': many tasks, shorter duration overall
 // WARNING: these observations have been made on a Databricks cluster with 2 workers having 4 cores each. 
-// To get similar results in local, try to increase the size of the files (e.g. using Range(1,100) in cell 4).
+// To get similar results in local, try to increase the size of the files (e.g. changing Range(1,100) in cell 4).
