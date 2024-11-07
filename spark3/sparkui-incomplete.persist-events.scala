@@ -91,7 +91,7 @@ spark.conf.set("spark.sql.adaptive.enabled", false) // make executions more pred
 
 val inputPath = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(inputPath)
-Range.inclusive(1, 30000, 10000) foreach { n => // 3 jobs will be launched, but we will see less in Spark UI because of spark.ui.retainedJobs
+Range.inclusive(1, 3000, 1000).par.foreach { n => // 3 jobs will be launched, but we will see less in Spark UI because of spark.ui.retainedJobs
   spark.sparkContext.setJobGroup(groupId = s"Group $n", description = s"Write with repartition ${n}")
   df.repartition(n).write.format("noop").mode("overwrite").save() // more repartition = more overhead = slower job
 }
