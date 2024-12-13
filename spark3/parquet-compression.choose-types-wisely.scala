@@ -5,23 +5,23 @@
 // COMMAND ----------
 
 /*
-This snippet shows who data type for numerical information and compression can affect Spark.
+This snippet shows how data type for numerical information and compression can affect Spark.
 
 # Symptom
-Storage needs does not match with expectations, for example is higher in output after filtering than in input.
+Storage needs do not match with expectations, for example volume is higher.
 
 # Explanation
-There is difference in in type when reading the data and type when writing it, causing a loss of compression perfomance.
+There is difference in type when reading the data and type when writing it, causing a loss of compression perfomance.
 
 */
 
 // COMMAND ----------
 
-// We are going to demonstrate our purpose by converting the same numerica data into different types,
+// We are going to demonstrate our purpose by converting the same numerical data into different types,
 // and write it in parquet using different compression
 
 
-// Here are the type we want to compare
+// Here are the types we want to compare
 val allNumericTypes = Seq("byte","short","int","long","double","float", "string","decimal(9,2)", "decimal(18,2)")
 
 // Here are the compressions we want to compare.
@@ -81,8 +81,7 @@ sizeOnDisk.foreach( o=>println ( s"${o._1}\t${o._2}\tkB"))
 
 // COMMAND ----------
 
-// now we can also add a check on the effect of choosing a specific number type on the obtained values
-// and compression on the obtained files size.
+// Now let's see how long it takes to read and process such data when using different compression and numerical data formats .
 println (s"${"-"*20}")
 println (s"Read written data")
 import scala.collection.mutable.ArrayBuffer
