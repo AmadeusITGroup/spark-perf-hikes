@@ -33,9 +33,10 @@ val rootFolder ="/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 // our initial data contains one million random numbers.
 val rndDF = spark.sparkContext.parallelize(
     List.range (0 ,1000000)
-      .map(I=>
-        (math.floor(math.random * 100000 ) )
-      )).toDF
+      .map(I=> (math.random * 100000 ) )                         // 100k decimal values
+//      .map(I=>(math.floor(math.random * 1000 + 999000) ) )       // 1000 int values from 999000 to 1000000
+//      .map(I=>(math.floor(math.random * scala.Byte.MaxValue))) // 128 int  values
+    ).toDF
 // Note: as we do not use the slice argument of parallelize and we've lots of row, we may have some warnings
 // Stage xxx contains a task of very large size (xxx KiB). The maximum recommended task size is 1000 KiB.
 // don't bother about this warning.
@@ -178,8 +179,13 @@ spark.sparkContext.parallelize(readInformations).map(o=>(o._1, o._2)).toDF("Path
 //
 // maybe could you check what's the best option if you have 1000 distinct values only, examples:
 // - only 1000 disctinct numbers but with 6 digits (long string equivalent)
-//      .map(I=>(math.floor(math.random * 1000)+999000)
-// - only 127 distinct values (short strings equivalents)
-//      .map(I=>(math.floor(math.random * scala.Byte.MaxValue))
+//      .map(I=>(math.floor(math.random * 1000 + 999000) ) )
+//   Check the space used, especially for decimal types.
 
+// - only 127 distinct values (short strings equivalents)
+//      .map(I=>(math.floor(math.random * scala.Byte.MaxValue)))
+//   In this case, you should see almost no difference in space used
+//   because parquet uses a system of dictionary to organize data.
+//   This dictionnary will be identical, and very small in all cases.
+//
 
