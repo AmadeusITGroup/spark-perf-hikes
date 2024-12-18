@@ -1,7 +1,7 @@
 // Databricks notebook source
 // Spark: 3.5.1
 // Local: --master 'local[8]' --driver-memory 1G
-// Databricks: ...
+// Databricks: cluster with 2 executors, 4 cores each
 
 // COMMAND ----------
 
@@ -34,10 +34,13 @@ If not the case, you can check their locks. Threads should not be blocked becaus
 */
 
 // COMMAND ----------
+
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{col, udf}
 val spark: SparkSession = SparkSession.active
+
 // COMMAND ----------
+
 val threadLockOperation = udf { (s: String) =>
   val token = System.getProperties // just a token to lock on within the same JVM (same worker)
   token.synchronized { // comment this line out to remove the thread contention!
@@ -51,11 +54,21 @@ val noThreadLockOperation = udf { (s: String) =>
 }
 
 val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
+
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(input).repartition(200)
+println(s"Number of records: ${df.count()}") 
+// 8345 records, 30 ms for each udf execution = ~250 s (total time across all executors)
+// if you have N cores, the total duration should be 250s/N
+
 // COMMAND ----------
+
 // Now take a look at the Spark UI!
 spark.sparkContext.setJobDescription("Save with udf WITH thread contention")
 df.select(threadLockOperation(col("name"))).write.format("noop").mode("overwrite").save()
+// with 2 executors, 4 cores each, total duration here is ~125 s
+
 // COMMAND ----------
+
 spark.sparkContext.setJobDescription("Save with udf WITHOUT thread contention")
 df.select(noThreadLockOperation(col("name"))).write.format("noop").mode("overwrite").save()
+// with 2 executors, 4 cores each, total duration here is ~32 s
