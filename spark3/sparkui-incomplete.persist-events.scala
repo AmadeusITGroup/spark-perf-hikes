@@ -1,6 +1,7 @@
 // Databricks notebook source
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[2]' --conf spark.ui.retainedJobs=2
+// Databricks: cluster with 8 cores
 
 // COMMAND ----------
 
