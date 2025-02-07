@@ -39,6 +39,7 @@ the join keys present in the build table are read.
 
 In order to make sure that DFP can kick-in:
   - the build side must be broadcastable
+  - there should be a filter on the build side
   - spark.databricks.optimizer.deltaTableSizeThreshold should be small enough
   - spark.databricks.optimizer.deltaTableFilesThreshold should be small enough
   - spark.databricks.optimizer.dynamicFilePruning should be true
@@ -165,3 +166,22 @@ joinTables("DFP")
 // You can also get the total amount of files of a delta table with 'describe detail'.
 // NOTE: The sum of 'number of files read' and 'number of files pruned' should give the total 
 // amount of files in the table as per its last version.
+
+// COMMAND ----------
+
+// Join a 2 tables (probe and build), without adding a filter in the smaller one (the build side of the join)
+def joinTablesNoFilter(description: String): Unit = {
+  val probe = DeltaTable.forPath(probeDir).toDF
+  val build = DeltaTable.forPath(buildDir).toDF
+  spark.sparkContext.setJobDescription(s"Join tables: $description")
+  probe
+  .join(build, build("residence") === probe("country_code"), "inner")
+  // No filter here
+  .count()
+}
+
+// Second scenario: DFP activated but no filter in the build side
+joinTablesNoFilter("DFP-no-filter")
+
+// Now do the same checks as above for the join without filter.
+// This time DFP does not kick in, so we get the same results as in the first scenario, without DFP.
