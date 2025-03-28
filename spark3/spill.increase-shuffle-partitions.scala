@@ -1,7 +1,7 @@
 // Databricks notebook source
 // Spark: 3.5.1
 // Local: --master 'local[2]' --driver-memory 1G
-// Databricks: ...
+// Databricks: 13.3LTS, 14GB max each worker 
 
 // COMMAND ----------
 
@@ -26,7 +26,7 @@ INFO ExternalSorter: Task 1 force spilling in-memory map to disk it will release
 
 import java.util.UUID
 import org.apache.spark.sql.SparkSession
-
+import org.apache.spark.sql.functions._
 val spark: SparkSession = SparkSession.active
 
 // See https://github.com/apache/spark/blob/master/core/src/main/scala/org/apache/spark/TestUtils.scala
@@ -61,18 +61,30 @@ spark.sparkContext.setJobDescription("Prepare input data")
 val inputPath = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 val outputPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 val df = spark.read.option("delimiter", "^").option("header", "true").csv(inputPath)
-(1 to 300).map(i => df.withColumn("extra", lit(i))).reduce(_ union _).write.format("parquet").save(outputPath)
+val dsFactor = 300 // factor to increase size of input dataset (and increase chances of spill)
+(1 to dsFactor).map(i => df.withColumn("extra", lit(i))).reduce(_ union _).write.format("parquet").save(outputPath)
 val dfs = spark.read.format("parquet").load(outputPath)
+
+// COMMAND ----------
+
+val dsFactor2 = 20 // factor to increase even more the size of input dataset (and increase chances of spill)
+
+// COMMAND ----------
 
 spark.sparkContext.setJobDescription("Shuffle with shuffle.partitions = 1 (spill)")
 spark.conf.set("spark.sql.shuffle.partitions", 1)
-dfs.orderBy("name").write.format("noop").mode("overwrite").save()
+(1 to dsFactor2).map(i => dfs.withColumn("extra2", lit(i))).reduce(_ union _).orderBy("name").write.format("noop").mode("overwrite").save()
 spillListener.report()
+
+// COMMAND ----------
 
 spark.sparkContext.setJobDescription("Shuffle with shuffle.partitions = 100 (no spill)")
 spark.conf.set("spark.sql.shuffle.partitions", 100)
-dfs.orderBy("name").write.format("noop").mode("overwrite").save()
+(1 to dsFactor2).map(i => dfs.withColumn("extra2", lit(i))).reduce(_ union _).orderBy("name").write.format("noop").mode("overwrite").save()
 spillListener.report()
+
+// COMMAND ----------
+
 // Explore the Spark UI and look for spills on the Stages or SQL sections.
 
 // The spill job is made of 2 stages. The second stage, that reads large shuffled data, cannot cope 
@@ -84,4 +96,3 @@ spillListener.report()
 // Mind that Spill fields not shown in case of no spill.
 // Also you can go to the SQL / DataFrame section, select the spill query, 
 // and see metrics for Sort: spill size.
-
