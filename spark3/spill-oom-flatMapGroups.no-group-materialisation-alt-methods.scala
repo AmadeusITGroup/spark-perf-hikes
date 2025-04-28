@@ -29,7 +29,6 @@
 
 // COMMAND ----------
 
-//spark.sparkContext.setJobDescription("JOB_flatMapGroups_analysis_data_generation")
 import org.apache.spark.sql.{Dataset, SparkSession}
 import scala.util.Random
 
@@ -64,7 +63,7 @@ def generateSyntheticData(
 // COMMAND ----------
 
 // MAGIC %md
-// MAGIC Partitioning always plays a big role. Usually we want each core to work on 3 to 4 partitions. Her we use a default of 4 per core that corresponds to the factor argument.
+// MAGIC Partitioning always plays a big role. Usually we want each core to work on 3 to 4 partitions. Here we use a default of 4 per core that corresponds to the factor argument.
 // MAGIC Depending wether you run this notebook locally or on databricks you should set values accordingly.Spark confs "spark.executor.instances
 // MAGIC and "spark.executor.cores" or not valide for databricks env.
 // MAGIC "spark.databricks.clusterUsageTags.clusterGeneration" is an integer but does not correspond to cores per executor. 
@@ -111,14 +110,11 @@ val numPartitions = optimalPartitions()
 
 val ds = generateSyntheticData(
   spark,
-  numEvents = 4000000000L, 
-  numGroups = 100,
+  numEvents = 4000000000L,
+  numGroups = 10,
   skewed = true,
-  skewRatio = 0.95 
+  skewRatio = 0.95
   )
-
-// Unless adaptive execution is set to false generating skewed data wont create bottleneck/straggler 
-//spark.conf.set("spark.sql.adaptive.enabled" ,true)
 
 // COMMAND ----------
 
@@ -136,8 +132,6 @@ ds.show
 // MAGIC
 
 // COMMAND ----------
-
-spark.sparkContext.setJobDescription("JOB_flatMapGroups_analysis_bad_usage")
 
 import spark.implicits._
 
@@ -159,7 +153,7 @@ badUsageResult.show
 
 // MAGIC %md
 // MAGIC Look at job 2 and job 3 latest stages.
-// MAGIC Notice  the amount of shuffle time and the read amout, the total as well as the one per taks such as  amount for data spilled to memory and disk and the GC time. This cell wont finish if you work on bigger groups.Will lead to OOM
+// MAGIC Notice  the amount of shuffle time and the read amout, the total as well as the one per taks such as  amount for data spilled to memory and disk and the GC time. This cell wont finish if you work on bigger groups.Will lead to OOM errors
 
 // COMMAND ----------
 
@@ -167,10 +161,8 @@ badUsageResult.show
 // MAGIC ### Good enough usage of the method
 // MAGIC Suffle is still unavoidable ( we need all items of a group together)
 // MAGIC We don't toList or collect -- we stream over Iterator, minimizing memory pressure.
-// MAGIC No big spikes, better for skewed groups, no OOM or spill in normal cases.
-// MAGIC But still not ideal for large skewed keys: 
-// MAGIC If iter is massive (here is some artificial skew might be handy for demonstration purposes), it still hits the same reducer, even if we don't load it all into memory
-// MAGIC Could still cause long tails/stragglers
+// MAGIC No big spikes, better for big partitions and skewed groups. Even though spill does occur, its not as severe as previously and we don't get OOM errors.
+// MAGIC This is  still not ideal since a lot of shuffle still occurs.
 
 // COMMAND ----------
 
@@ -179,8 +171,6 @@ badUsageResult.show
 // MAGIC This example with way to simple. We are just filtering For consistency and clarity sake we'll also do the sum.
 
 // COMMAND ----------
-
-spark.sparkContext.setJobDescription("JOB_flatMapGroups_analysis_good_enough_usage2")
 
 val goodEnoughResult  = grouped.flatMapGroups { case (userId, iter) =>
   // stream through iterator and compute sum without materializing the group
@@ -214,7 +204,6 @@ goodEnoughResult.show
 
 // COMMAND ----------
 
-spark.sparkContext.setJobDescription("JOB_flatMapGroups_analysis_alt_typed_agg")
 import org.apache.spark.sql.expressions.Aggregator
 import org.apache.spark.sql.Encoders
 
