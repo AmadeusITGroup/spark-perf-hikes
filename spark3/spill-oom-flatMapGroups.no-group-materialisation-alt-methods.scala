@@ -64,8 +64,8 @@ def generateSyntheticData(
 
 // MAGIC %md
 // MAGIC Partitioning always plays a big role. Usually we want each core to work on 3 to 4 partitions. Here we use a default of 4 per core that corresponds to the factor argument.
-// MAGIC Depending wether you run this notebook locally or on databricks you should set values accordingly.Spark confs "spark.executor.instances
-// MAGIC and "spark.executor.cores" or not valide for databricks env.
+// MAGIC Depending whether you run this notebook locally or on databricks you should set values accordingly. Spark confs "spark.executor.instances
+// MAGIC and "spark.executor.cores" or not valid for databricks env.
 // MAGIC "spark.databricks.clusterUsageTags.clusterGeneration" is an integer but does not correspond to cores per executor. 
 // MAGIC
 
@@ -86,11 +86,11 @@ val numPartitions = optimalPartitions()
 
 // MAGIC %md
 // MAGIC The values chosen below makes a very skewed dataset with just 1OO groups so we can obtain big partitions.
-// MAGIC More events, fewer groups/partitions and more skew will be generally be harder to handle.
-// MAGIC AQE does aleviate the skewed partition that could accentuate certain metrics we are trying to highlight. 
-// MAGIC Depending on the environement ( local or on databricks) differents set of values should be used.
-// MAGIC For each environement we propose 2 set of values: 
-// MAGIC - first set of values will ensure execution of all cells highlighting the differences in ressources utilisation and perfomrance of each solution
+// MAGIC More events, fewer groups/partitions, and more skew will be generally harder to handle.
+// MAGIC AQE does alleviate the skewed partition that could accentuate certain metrics we are trying to highlight. 
+// MAGIC Depending on the environment ( local or on databricks) differents set of values should be used.
+// MAGIC For each environment we propose 2 set of values: 
+// MAGIC - first set of values will ensure execution of all cells highlighting the differences in resources utilization and performance of each solution
 // MAGIC - second set of values will make the cell of bad implementation fail and let the rest succeed 
 // MAGIC
 // MAGIC Databricks environment:
@@ -103,8 +103,8 @@ val numPartitions = optimalPartitions()
 // MAGIC
 // MAGIC
 // MAGIC The values set by default are meant for databricks
-// MAGIC Feel free to tweak any setting here but the explanation will stick to these defaults. 
-// MAGIC AQE is enabled by default. By disabling AQE you'll have to lower the dataset/partition size to achieve similar results
+// MAGIC Feel free to tweak any setting here, but the explanation will stick to these defaults. 
+// MAGIC AQE is enabled by default. By disabling AQE you will have to lower the dataset/partition size to achieve similar results
 
 // COMMAND ----------
 
@@ -126,7 +126,7 @@ ds.show
 
 // MAGIC %md
 // MAGIC ### Bad usage of the method. 
-// MAGIC It materialises all groups to memory due to .toList
+// MAGIC It materializes all groups to memory due to .toList
 // MAGIC shuffles all data (no combiner)
 // MAGIC Causes skew if one key is huge then it also leads to spills
 // MAGIC
@@ -153,7 +153,7 @@ badUsageResult.show
 
 // MAGIC %md
 // MAGIC Look at job 2 and job 3 latest stages.
-// MAGIC Notice  the amount of shuffle time and the read amout, the total as well as the one per taks such as  amount for data spilled to memory and disk and the GC time. This cell wont finish if you work on bigger groups.Will lead to OOM errors
+// MAGIC Notice the amount of shuffle time and the read amout, the total as well as the one per tasks such as  amount for data spilled to memory and disk and the GC time. This cell won’t finish if you work on bigger groups. Will lead to OOM errors
 
 // COMMAND ----------
 
@@ -162,13 +162,13 @@ badUsageResult.show
 // MAGIC Suffle is still unavoidable ( we need all items of a group together)
 // MAGIC We don't toList or collect -- we stream over Iterator, minimizing memory pressure.
 // MAGIC No big spikes, better for big partitions and skewed groups. Even though spill does occur, its not as severe as previously and we don't get OOM errors.
-// MAGIC This is  still not ideal since a lot of shuffle still occurs.
+// MAGIC This is still not ideal since a lot of shuffle occurs.
 
 // COMMAND ----------
 
 // MAGIC %md
-// MAGIC Metrics here beyond halved execution time  area almost identical but there is a catch.
-// MAGIC This example with way to simple. We are just filtering For consistency and clarity sake we'll also do the sum.
+// MAGIC Metrics here, beyond halved execution time, are almost identical but there is a catch.
+// MAGIC For consistency and clarity sake we'll also do the sum.
 
 // COMMAND ----------
 
@@ -190,7 +190,7 @@ goodEnoughResult.show
 // COMMAND ----------
 
 // MAGIC %md
-// MAGIC By looking at same metrics as before we can see that the amount of data shuffled written or read does not differ but that we have a much smaller GC time in the second job which ensures much faster halved execution time than the bad example. toList does create a lot of ephimeral objects it then needs to clean up.
+// MAGIC By looking at same metrics as before we can see that the amount of data shuffled written or read does not differ but that we have a much smaller GC time in the second job which ensures much faster halved execution time than the bad example. toList does create many ephemeral objects it then needs to clean up.
 
 // COMMAND ----------
 
@@ -207,7 +207,7 @@ goodEnoughResult.show
 import org.apache.spark.sql.expressions.Aggregator
 import org.apache.spark.sql.Encoders
 
-// This object defines a strongly-typed custom aggregator using Spark's Dataset API
+// This object defines a strongly typed custom aggregator using Spark's Dataset API
 object SumAgg extends Aggregator[Event, Int, Int] {
   // The zero value is the starting point for aggregation. In this case, the sum starts from 0.
   def zero = 0
@@ -235,15 +235,15 @@ datasetAggregatorResult.show
 // COMMAND ----------
 
 // MAGIC %md
-// MAGIC Here we see a drastic decrease in amount of data shuffled compared too all previous implementations since most of the work is done pre shuffle (mapper/combiner). No spill occurs.
-// MAGIC In the first job we can observe we have a some peak execution memory which was previously 0 that reflects the work done pre shuffle (by the combiner). Since only the result of each partition is shuffled the amount is extremely small. No GC occurs at all on 2nd job but seems to slighlty have increased in the 1rst job. We have further improved also overall performance even more.
+// MAGIC Here we see a drastic decrease in amount of data shuffled compared to all previous implementations since most the work is done pre shuffle (mapper/combiner). No spill occurs.
+// MAGIC In the first job we can observe we have a peak execution memory which was previously 0 that reflects the work done pre shuffle (by the combiner). Since only the result of each partition is shuffled, the amount is extremely small. No GC occurs at all on 2nd job but seems to slightly have increased in the 1rst job. We have further improved also overall performance even more.
 
 // COMMAND ----------
 
 // MAGIC %md
 // MAGIC ### The best: equivalent using DataFrame API
 // MAGIC Under the hood, spark is smart enough to do most of the aggregation via a combiner on map-side (pre shuffle)
-// MAGIC The function you might be intrested could be already part of spark dataframe built in aggregation functions. In that case use it directly
+// MAGIC The function you might be interested could be already part of spark dataframe built in aggregation functions. In that case use it directly
 
 // COMMAND ----------
 
@@ -264,7 +264,7 @@ dFEquiv.show
 // COMMAND ----------
 
 // MAGIC %md
-// MAGIC The dataframe equivalent has same total shuffle metrics than previously but like the type aggregator most of the work occurs on the mapper side (1 job). Notice we can spot also some peak execution memory. Overall execution is even faster, the fastest.  GC time is further reduced on the mapper side. Here we can witness the whole power of spark dataframe api optimisations under the hood like tungsten.
+// MAGIC The dataframe equivalent has same total shuffle metrics than previously but like the typed aggregator most of the work occurs on the mapper side (1 job). Notice we can spot also some peak execution memory. Overall execution is even faster, the fastest. GC time is further reduced on the mapper side. Here we can witness the whole power of spark dataframe api optimization under the hood like tungsten.
 
 // COMMAND ----------
 
@@ -293,4 +293,4 @@ dFEquiv.show
 // MAGIC %md
 // MAGIC ## Conclusion
 // MAGIC We can clearly see the various gains in performance of each example compared to a bad usage.  Depending on the associated logic, code base and time the various alternatives might not be viable. 
-// MAGIC If you can't avoid using flatMapGroups make sure you don't materialise the whole iterator. If you need to stick with dataset api then try to use the typed Aggregator. Finally when possible; try to use built in function of the Dataframe api.
+// MAGIC If you can't avoid using flatMapGroups make sure you don't materialize the whole iterator. If you need to stick with dataset api then try to use the typed Aggregator. Finally, when possible, try to use built in functions of the Dataframe api.
