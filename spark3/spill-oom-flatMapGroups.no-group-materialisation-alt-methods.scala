@@ -14,10 +14,10 @@
 // MAGIC flatMapGroups is a method of the typed KeyGroupedDataset API in Spark.
 // MAGIC The goal of this notebook is too educate and guide users about the risk of massive data shuffled and potentially spilled associated using flatMapGroups in order to use it properly or avoid using it altogether. 
 // MAGIC After a brief description and explantion of how it works, a bad usage example will be given, a proper usage example and alternatives will be explored in the dataset or dataframe api. Latest associated documentation: https://spark.apache.org/docs/3.5.2/api/java/org/apache/spark/sql/KeyValueGroupedDataset.html#flatMapGroups-scala.Function2-org.apache.spark.sql.Encoder- 
+// MAGIC Every example is triggered by an action such as show, take or count. We also print the execution plan but its better visualised in Spark UI. For each action you investigate the metrics of the 2 stages in the 2 jobs that are created. 
 // MAGIC
 // MAGIC # What to aim for concretely
 // MAGIC Don't materialize the iterator in flatMapGroups in order to avoid spill and potentially OOM. Use other alternatives like the typed Aggregator in dataset API or dataframe API functions.
-// MAGIC Every example is triggered by an action such as show, take or count. We also print the execution plan but its better visualised in Spark UI. For each action you investigate the metrics of the 2 stages in the 2 jobs that are created. 
 
 // COMMAND ----------
 
@@ -64,7 +64,7 @@ def generateSyntheticData(
 
 // MAGIC %md
 // MAGIC Partitioning always plays a big role. Usually we want each core to work on 3 to 4 partitions. Here we use a default of 4 per core that corresponds to the factor argument.
-// MAGIC Depending whether you run this notebook locally or on databricks you should set values accordingly. Spark confs "spark.executor.instances
+// MAGIC Depending whether you run this notebook locally or on databricks you should set values accordingly. Spark confs "spark.executor.instances"
 // MAGIC and "spark.executor.cores" or not valid for databricks env.
 // MAGIC "spark.databricks.clusterUsageTags.clusterGeneration" is an integer but does not correspond to cores per executor. 
 // MAGIC
@@ -197,7 +197,7 @@ goodEnoughResult.show
 // MAGIC %md
 // MAGIC ### Better; Using a Typed Aggregator.
 // MAGIC This abstract class  [Aggregator[-IN, BUF, OUT]](https://spark.apache.org/docs/3.5.0/api/scala/org/apache/spark/sql/expressions/Aggregator.html) we extend also operates on  [Class KeyValueGroupedDataset<K,V>](https://spark.apache.org/docs/3.5.2/api/java/org/apache/spark/sql/KeyValueGroupedDataset.html#flatMapGroups-scala.Function2-org.apache.spark.sql.Encoder-)
-// MAGIC Spark inserts a partial reduce stage (combiner) before shuffle. This will ensure
+// MAGIC Spark inserts a partial reduce operation (combiner) before shuffle. This will ensure
 // MAGIC - Lower Memory usage.
 // MAGIC - Shuffle volume reduced.
 // MAGIC - Faster execution.
@@ -282,7 +282,7 @@ dFEquiv.show
 //spark.conf.set("spark.sql.adaptive.optimizeSkewsInRebalancePartitions.enabled" , true)
 //spark.conf.set("spark.sql.adaptive.skewJoin.enabled", true)
 
-// Avoid merge sort for smakk groups (improves suffle perf)
+// Avoid merge sort for small groups (improves suffle perf)
 //spark.conf.set("spark.shuffle.sort.bypassMergeThreshold", "200")
 
 // Spill Tuning 
