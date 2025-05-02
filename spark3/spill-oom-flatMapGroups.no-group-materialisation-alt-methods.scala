@@ -16,7 +16,7 @@
 // MAGIC After a brief description and explantion of how it works, a bad usage example will be given, a proper usage example and alternatives will be explored in the dataset or dataframe api. Latest associated documentation: https://spark.apache.org/docs/3.5.2/api/java/org/apache/spark/sql/KeyValueGroupedDataset.html#flatMapGroups-scala.Function2-org.apache.spark.sql.Encoder- 
 // MAGIC
 // MAGIC # What to aim for concretely
-// MAGIC Run every cell and examine and compare the execution plan, overall performance and  amount of data shuffled and spilled in SparkUI.
+// MAGIC Don't materialize the iterator in flatMapGroups in order to avoid spill and potentially OOM. Use other alternatives like the typed Aggregator in dataset API or dataframe API functions.
 // MAGIC Every example is triggered by an action such as show, take or count. We also print the execution plan but its better visualised in Spark UI. For each action you investigate the metrics of the 2 stages in the 2 jobs that are created. 
 
 // COMMAND ----------
