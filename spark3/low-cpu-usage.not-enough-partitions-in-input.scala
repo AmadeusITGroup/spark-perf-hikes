@@ -70,14 +70,22 @@ val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
 spark.sparkContext.setJobDescription("Read CSV")
 val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
 
-def showPartitions(df: DataFrame) = df.withColumn("part_id", spark_partition_id()).groupBy("part_id").count().selectExpr("count(distinct(part_id)) as legit_partitions", "max(count) as max_records", "min(count) as min_records").show()
+// Counts the number of physical partitions using the RDD API. Note that this number is an upper bound to the number of DataFrame
+// partitions (as observed using spark_partition_id()) which depends on the SQL query performed on the DataFrame and its plan.
+def showPartitions(df: DataFrame) = df.rdd
+  .mapPartitions(iter => Iterator(iter.length))
+  .filter(_ != 0)
+  .toDF
+  .selectExpr("count(*) as nb_partitions", "cast(avg(value) as int) as avg_nb_records")
+  .show()
 
 // COMMAND ----------
 
 spark.sparkContext.setJobDescription("Initialize input table")
-spark.conf.set("parquet.block.size", 1024 * 1024) // size of the row-group is 1MB
+spark.conf.set("parquet.block.size", 1024 * 1024) // size of the row-group is 1MB in memory (smaller on disk)
 
-// single parquet file, roughly 4MB each (we create multiple input datasets to avoid warmup effects)
+// A single parquet file has an observed size of roughly 40MB each and 136 row groups.
+// We create multiple input datasets to avoid warmup effects.
 Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input1")
 Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input2")
 Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).repartition(1).write.format("parquet").save(tmpPath + "/input3")
