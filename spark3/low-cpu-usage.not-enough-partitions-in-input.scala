@@ -72,12 +72,15 @@ val airports = spark.read.option("delimiter","^").option("header","true").csv(in
 
 // Counts the number of physical partitions using the RDD API. Note that this number is an upper bound to the number of DataFrame
 // partitions (as observed using spark_partition_id()) which depends on the SQL query performed on the DataFrame and its plan.
-def showPartitions(df: DataFrame) = df.rdd
+def showPartitions(df: DataFrame) = {
+  spark.sparkContext.setJobDescription("Show partitions")
+  df.rdd
   .mapPartitions(iter => Iterator(iter.length))
   .filter(_ != 0)
   .toDF
   .selectExpr("count(*) as nb_partitions", "cast(avg(value) as int) as avg_nb_records")
   .show()
+}
 
 // COMMAND ----------
 
@@ -99,7 +102,7 @@ val expensiveProcessing = "sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(s
 // DBTITLE 1,Scenario with few partitions
 // Scenario with few partitions
 spark.sparkContext.setJobDescription("Read input (few partitions)")
-val df1 = spark.read.format("parquet").load(tmpPath + "/input1")
+val df1 = spark.read.format("parquet").load(tmpPath + "/input1") // only reads schema metadata
 showPartitions(df1) // what's the distribution of records per partition?
 
 spark.sparkContext.setJobDescription("Write input (few partitions)")
@@ -109,9 +112,9 @@ df1.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 
 // DBTITLE 1,Scenario with many partitions
 // Scenario with many partitions
-spark.conf.set("spark.sql.files.maxPartitionBytes", 128*1024)
+spark.conf.set("spark.sql.files.maxPartitionBytes", 128*1024) // 128 KB
 spark.sparkContext.setJobDescription("Read input (many partitions)")
-val df2 = spark.read.format("parquet").load(tmpPath + "/input2")
+val df2 = spark.read.format("parquet").load(tmpPath + "/input2") // only reads schema metadata
 showPartitions(df2) // what's the distribution of records per partition?
 
 spark.sparkContext.setJobDescription("Write input (many partitions)")
@@ -123,7 +126,7 @@ df2.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 // DBTITLE 1,Scenario with repartition
 // Scenario with repartition
 spark.sparkContext.setJobDescription("Read input (repartitioned)")
-val df3 = spark.read.format("parquet").load(tmpPath + "/input3")
+val df3 = spark.read.format("parquet").load(tmpPath + "/input3") // only reads schema metadata
 spark.sparkContext.setJobDescription("Write input (repartitioned)")
 df3.repartition(8*3).selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save()
 
