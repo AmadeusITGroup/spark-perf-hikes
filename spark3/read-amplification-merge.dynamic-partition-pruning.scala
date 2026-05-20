@@ -1,4 +1,8 @@
 // Databricks notebook source
+// Spark: 3.5.1
+// Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.3.1 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Heads up, locally we cannot reproduce DPP!!!  // Databricks: 13.3LTS+photon
+
 import java.util.UUID
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{col, lit}
@@ -19,15 +23,7 @@ spark.conf.set("spark.sql.adaptive.enabled", true)
 // Destination delta table
 import org.apache.spark.sql.functions.{col, substr}
 spark.sparkContext.setJobDescription("Create delta table")
-val airports = spark.read
-  .option("delimiter", "^")
-  .option("header", "true")
-  .csv(input)
-  .withColumn("partition", substr(col("iata_code"), lit(1), lit(1)))
-
-// COMMAND ----------
-
-display(airports)
+val airports = spark.read.option("delimiter", "^").option("header", "true").csv(input).withColumn("partition", substr(col("iata_code"), lit(1), lit(1)))
 
 // COMMAND ----------
 
@@ -54,6 +50,13 @@ def buildDeltaTableToMerge(iataCode: String, newVal: String): DataFrame = {
   filterDfBeforeMerge(DeltaTable.forPath(path).toDF, iataCode)
 }
 
+def buildDeltaTableToMergeNoFilter(iataCode: String, newVal: String): DataFrame = {
+  val df = buildDataframeToMerge(iataCode, newVal)
+  val path = s"$tmpPath/batch_${iataCode}_${newVal}_${UUID.randomUUID()}"
+  df.write.mode("overwrite").format("delta").save(path)
+  DeltaTable.forPath(path).toDF
+}
+
 def merge(df: DataFrame): Unit = {
   val keyCols = Seq("iata_code", "partition")
   DeltaTable
@@ -64,17 +67,39 @@ def merge(df: DataFrame): Unit = {
 
 // COMMAND ----------
 
+spark.sparkContext.setJobDescription("Build DFs to merge")
+val df1 = buildDataframeToMerge("AAI", "dpp-no-delta1")
+val delta1 = buildDeltaTableToMerge("AAI", "dpp-delta1")
+val delta2 = buildDeltaTableToMerge("AAI", "dpp-delta2")
+val delta3 = buildDeltaTableToMergeNoFilter("AAI", "dpp-delta2")
+
+// COMMAND ----------
+
+// Disable DPP
+spark.conf.set("spark.sql.optimizer.dynamicPartitionPruning.enabled", "false")
+
+// DPP (input from delta)
+spark.sparkContext.setJobDescription("Merge 1 - No DPP - Disabled")
+merge(delta1)
+
+// COMMAND ----------
+
 // Be sure to have the conditions to trigger DPP: DPP enabled, broadcast join
 spark.conf.set("spark.sql.optimizer.dynamicPartitionPruning.enabled", "true")
 spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1000000000L)
 
-// DPP (input not from delta)
-spark.sparkContext.setJobDescription("Merge 1 - DPP - input not delta")
-merge(buildDataframeToMerge("AAI", "dpp-no-delta"))
-
 // COMMAND ----------
 
+// DPP (input not from delta)
+spark.sparkContext.setJobDescription("Merge 2 - No DDP - From DF")
+merge(df1)
 
+// COMMAND ----------
 // DPP (input from delta)
-spark.sparkContext.setJobDescription("Merge 2 - DPP - input delta")
-merge(buildDeltaTableToMerge("AAI", "dpp-delta"))
+spark.sparkContext.setJobDescription("Merge 3 - DPP")
+merge(delta2)
+
+// COMMAND ----------
+// No DPP (missing filter)
+spark.sparkContext.setJobDescription("Merge 4 - No DPP - Missing filter")
+merge(delta3)
