@@ -77,7 +77,7 @@ def showPartitions(df: DataFrame) = {
   df.rdd
   .mapPartitions(iter => Iterator(iter.length))
   .filter(_ != 0)
-  .toDF
+  .toDF()
   .selectExpr("count(*) as nb_partitions", "cast(avg(value) as int) as avg_nb_records")
   .show()
 }
@@ -102,7 +102,7 @@ val expensiveProcessing = "sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(s
 // DBTITLE 1,Scenario with few partitions
 // Scenario with few partitions
 spark.sparkContext.setJobDescription("Read input (few partitions)")
-val df1 = spark.read.format("parquet").load(tmpPath + "/input1") // only reads schema metadata
+val df1 = spark.read.format("parquet").load(tmpPath + "/input1") // lightweight job that only reads schema metadata 
 showPartitions(df1) // what's the distribution of records per partition?
 
 spark.sparkContext.setJobDescription("Write input (few partitions)")
@@ -114,7 +114,7 @@ df1.selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save(
 // Scenario with many partitions
 spark.conf.set("spark.sql.files.maxPartitionBytes", 128*1024) // 128 KB
 spark.sparkContext.setJobDescription("Read input (many partitions)")
-val df2 = spark.read.format("parquet").load(tmpPath + "/input2") // only reads schema metadata
+val df2 = spark.read.format("parquet").load(tmpPath + "/input2") // lightweight job that only reads schema metadata
 showPartitions(df2) // what's the distribution of records per partition?
 
 spark.sparkContext.setJobDescription("Write input (many partitions)")

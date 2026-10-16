@@ -24,7 +24,7 @@ on the 'country_code' column, before and after having z-odered the table on such
 
 Before z-ordering the table, we observe that each parquet file contains values of the 'country_code' 
 that span over the whole domain (AE to ZW).
-Furthermore, the select query needs to read all the table files. This is visible in the 'number of files read' metric,
+Therefore, the select query needs to read all the table files. This is visible in the 'number of files read' metric,
 in the Scan Parquet node of the Spark Plan corresponding to such query (Spark UI, SQL/Dataframe tab).
 
 After z-ordering the table, we observe that country codes are well sorted and colocated in the parquet files.

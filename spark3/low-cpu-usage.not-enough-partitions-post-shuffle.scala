@@ -90,3 +90,11 @@ df2.distinct().selectExpr(expensiveProcessing).write.format("noop").mode("overwr
 // Mind that those jobs are very different:
 // - for 'Shuffle (1...partitions)' job: 2 stages, the last stage (post-shuffle) has 1 task, longer duration
 // - for 'Shuffle (8...partitions)' job: 2 stages, the last stage (post-shuffle) has 8 tasks, shorter duration
+
+// COMMAND ----------
+
+spark.sparkContext.setJobDescription("Read (auto post-shuffle partitions)")
+spark.conf.set("spark.sql.shuffle.partitions", "auto")
+val df2 = spark.read.format("parquet").load(tmpPath + "/input2")
+spark.sparkContext.setJobDescription("Shuffle (auto post-shuffle partitions)")
+df2.distinct().selectExpr(expensiveProcessing).write.format("noop").mode("overwrite").save()
