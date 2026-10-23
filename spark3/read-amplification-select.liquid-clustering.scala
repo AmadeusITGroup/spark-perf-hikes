@@ -39,7 +39,16 @@ or too low cardinality columns. Liquid clustering is not compatible with partiti
 # What to aim for concretely
 In the execution plan of the query, there should be pushed filters on the clustering column.
 These filters should reduce the 'number of files read' metric in the scan parquet node for the query (5 -> 1).
+
+============
+TODO CHECK THIS SECTION
+============
 */
+
+// COMMAND ----------
+
+// MAGIC %md
+// MAGIC # Setup
 
 // COMMAND ----------
 
@@ -49,8 +58,8 @@ import org.apache.spark.sql.SparkSession
 
 val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
-val inputDir = tmpPath + "/input"
-
+val inputDirWithoutLc = tmpPath + "/input-without-lc"
+val inputDirWithLc = tmpPath + "/input-with-lc"
 val spark: SparkSession = SparkSession.active
 
 spark.conf.set("spark.sql.adaptive.enabled", false)
@@ -58,75 +67,103 @@ spark.conf.set("spark.sql.adaptive.enabled", false)
 spark.sparkContext.setJobDescription("Read input CSV")
 val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
 
-spark.sparkContext.setJobDescription("Format input CSV into delta (multiple files)")
-airports.repartition(5).write.format("delta").save(inputDir)
+val partitions = 5
+spark.sparkContext.setJobDescription("Write delta table 1")
+airports.repartition(partitions).write.format("delta").save(inputDirWithoutLc)
+spark.sparkContext.setJobDescription("Write delta table 2")
+airports.repartition(partitions).write.format("delta").save(inputDirWithLc)
 
 // COMMAND ----------
 
-import org.apache.spark.sql.DataFrame
+// Enable liquid clustering on the corresponding table, then cluster the data with OPTIMIZE
+spark.sparkContext.setJobDescription("Enable liquid clustering on one table")
+spark.sql(s"ALTER TABLE delta.`$inputDirWithLc` CLUSTER BY (iata_code, country_code)")
+spark.sparkContext.setJobDescription("OPTIMIZE (liquid clustering)")
+spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
+spark.sql(s"OPTIMIZE delta.`$inputDirWithLc`")
 
-def showMaxMinStats(tablePath: String, colName: String, commit: Int): DataFrame = {
-  // stats on parquet files added to the table
-  import org.apache.spark.sql.functions._
-  import org.apache.spark.sql.types._
-  val statsSchema = new StructType()
-      .add("numRecords", IntegerType, true)
-      .add("minValues", MapType(StringType, StringType), true)
-      .add("maxValues", MapType(StringType, StringType), true)
-  val df = spark.read.json(s"$tablePath/_delta_log/*${commit}.json")
-    .withColumn("commit_json_name", input_file_name())
-    .withColumn("add_stats", from_json(col("add.stats"), statsSchema))
-    .withColumn(s"add_stats_min_col_${colName}", col(s"add_stats.minValues.$colName"))
-    .withColumn(s"add_stats_max_col_${colName}", col(s"add_stats.maxValues.$colName"))
-    .withColumn("add_size", col("add.size"))
-    .withColumn("add_path", col("add.path"))
-    .where(col("add_path").isNotNull)
-    .select("add_path", s"add_stats_min_col_${colName}", s"add_stats_max_col_${colName}")
-    .orderBy(s"add_stats_min_col_${colName}", "add_path")
-  spark.sparkContext.setJobDescription(s"Display max/min stats for files present in delta table (commit ${commit})")
-  df
-}
+// COMMAND ----------
 
 def selectQuery(tablePath: String, tag: String): Unit = {
   spark.sparkContext.setJobDescription(s"Select query = $tag")
   val df = DeltaTable.forPath(tablePath).toDF
-  val c = df.where(s"country_code = 'IT'").count()
-  println(c)
+  df.where(s"country_code = 'IT'").where(s"iata_code like 'F%'").select("country_code", "iata_code").show(false)
 }
 
 // COMMAND ----------
 
+// Max/min stats of the parquet files added by each commit in [fromCommit, toCommit], unioned in one dataframe
+import org.apache.spark.sql.DataFrame
+def showMaxMinStats(tablePath: String, colNames: Seq[String], fromCommit: Int, toCommit: Int): DataFrame = {
+  import org.apache.spark.sql.functions._
+  import org.apache.spark.sql.types._
+  require(colNames.nonEmpty, "At least one column name is required")
+  val statsSchema = new StructType()
+    .add("numRecords", IntegerType, true)
+    .add("minValues", MapType(StringType, StringType), true)
+    .add("maxValues", MapType(StringType, StringType), true)
+
+  val minCols = colNames.map(c => s"add_stats_min_col_$c")
+  val statsCols = colNames.flatMap { c =>
+    Seq(
+      col("add_stats.minValues").getItem(c).as(s"add_stats_min_col_$c"),
+      col("add_stats.maxValues").getItem(c).as(s"add_stats_max_col_$c")
+    )
+  }
+
+  val perCommit = (fromCommit to toCommit)
+    .map(commit => commit -> spark.read.json(f"$tablePath/_delta_log/$commit%020d.json"))
+    .collect { case (commit, json) if json.columns.contains("add") => // only commits with added files (e.g. CLUSTER BY may lack)
+      json
+        .withColumn("add_stats", from_json(col("add.stats"), statsSchema))
+        .where(col("add.path").isNotNull)
+        .select(
+          Seq(
+            lit(commit).as("commit"),
+            col("add.path").as("add_path")
+          ) ++ statsCols ++ Seq(            
+            to_json(col("add.tags")).as("add_tags")
+          ): _*
+        )
+    }
+
+  require(perCommit.nonEmpty, s"No files added between commits $fromCommit and $toCommit")
+  spark.sparkContext.setJobDescription(s"Display max/min stats for files added to delta table (commits ${fromCommit} to ${toCommit})")
+  perCommit.reduce(_ unionByName _).orderBy((Seq("commit") ++ minCols :+ "add_path").map(col): _*)
+}
+
+// COMMAND ----------
+
+// MAGIC %md 
+// MAGIC ## No liquid clustering
+
+// COMMAND ----------
+
 // show that files have data that is not well organized (ranges max/min values overlap for different files)
-display(showMaxMinStats(inputDir, "country_code", 0))
+display(showMaxMinStats(inputDirWithoutLc, Seq("country_code", "iata_code"), 0, 0))
 
 // COMMAND ----------
 
-selectQuery(inputDir, "NO LIQUID CLUSTERING")
+selectQuery(inputDirWithoutLc, "NO LIQUID CLUSTERING")
 
 // COMMAND ----------
 
-// Enable liquid clustering on the existing table, then cluster the data with OPTIMIZE
-spark.sparkContext.setJobDescription("Enable liquid clustering")
-spark.sql(s"ALTER TABLE delta.`$inputDir` CLUSTER BY (country_code)")
-spark.sparkContext.setJobDescription("OPTIMIZE (liquid clustering)")
-spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
-spark.sql(s"OPTIMIZE delta.`$inputDir`")
-
+// MAGIC %md
+// MAGIC ## With liquid clustering
 
 // COMMAND ----------
 
-spark.sparkContext.setJobDescription("Describe table")
-spark.sql(s"DESCRIBE DETAIL delta.`$inputDir`").select("numFiles", "clusteringColumns").show(false)
-spark.sql(s"DESCRIBE HISTORY delta.`$inputDir`").show(false)
-
-// COMMAND ----------
-
-// show that files have data that is well organized now (commit 1 is the CLUSTER BY metadata change, commit 2 is the OPTIMIZE)
-display(showMaxMinStats(inputDir, "country_code", 2))
+spark.sparkContext.setJobDescription("DESCRIBE HISTORY")
+display(spark.sql(s"DESCRIBE HISTORY delta.`$inputDirWithLc`"))
 
 // COMMAND ----------
 
 
-selectQuery(inputDir, "LIQUID CLUSTERING")
+display(showMaxMinStats(inputDirWithLc, Seq("country_code", "iata_code"), 0, 5))
+
+// COMMAND ----------
+
+
+selectQuery(inputDirWithLc, "LIQUID CLUSTERING")
 
 // Check the Spark UI to see the amount of files read for the same select query before and after liquid clustering.
