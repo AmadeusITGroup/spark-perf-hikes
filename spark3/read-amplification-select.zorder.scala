@@ -53,6 +53,7 @@ delta.dataSkippingNumIndexedCols / delta.dataSkippingStatsColumns), and the file
 
 // COMMAND ----------
 
+// DBTITLE 1,Setup
 import java.util.UUID
 import io.delta.tables.DeltaTable
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -133,12 +134,18 @@ def selectQuery(tablePath: String, tag: String): Unit = {
 
 // COMMAND ----------
 
+// DBTITLE 1,Before Z-order
 // show that files have data that is not well organized (ranges max/min values overlap for different files)
 showDf(showMaxMinStats(inputDir, Seq("country_code"), 0, 0))
+
+// COMMAND ----------
+
+// Separate cell: display runs its query when the cell ends, so it would get this cell's job description
 selectQuery(inputDir, "NO ZORDER")
 
 // COMMAND ----------
 
+// DBTITLE 1,Optimize with Z-order
 // Execute the optimize command
 spark.sparkContext.setJobDescription("OPTIMIZE with Z-ORDER")
 spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
@@ -146,20 +153,19 @@ DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code")
 
 // COMMAND ----------
 
+// DBTITLE 1,After Z-order
 // show that files have data that is well organized now
 showDf(showMaxMinStats(inputDir, Seq("country_code"), 1, 1))
+
+// COMMAND ----------
+
 selectQuery(inputDir, "ZORDER")
 
 // Check the Spark UI to see the number of files read for the same select query before and after z-order.
 
 // COMMAND ----------
 
-/*
-# Appendix: is Z-order incremental?
-*/
-
-// COMMAND ----------
-
+// DBTITLE 1,Appendix: is Z-order incremental?
 // Incremental Z-order (Databricks runtime only): files z-ordered together in one OPTIMIZE share a ZCUBE_ID (see zcube_id).
 // A later OPTIMIZE ZORDER BY on the same columns:
 // - keeps cubes at or above the min cube size threshold untouched, and z-orders only the new files into a new cube
@@ -186,6 +192,8 @@ DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code")
 // - not incremental (OSS): commit 1 and 2 files are all removed and re-added under one new zcube_id
 //   (also what Databricks does without the threshold conf above, since the commit 1 cube is partial)
 showDf(showMaxMinStats(inputDir, Seq("country_code"), 1, 3))
+
+// COMMAND ----------
 
 // If incremental, the two cubes overlap on country_code: expect ~1 file read per cube (see "number of files read").
 // Each new cube adds overlap: read amplification grows until cubes are merged / rewritten.
