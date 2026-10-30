@@ -19,24 +19,35 @@ since your result-set is really small.
 
 # Explanation
 
-In this example we create a delta table composed by 5 parquet files, and we run a select query, filtering 
-on the 'country_code' column, before and after having z-odered the table on such column.
+In this example we create a delta table composed of 5 parquet files, and we run a select query, filtering 
+on the 'country_code' column, before and after having z-ordered the table on such column.
 
 Before z-ordering the table, we observe that each parquet file contains values of the 'country_code' 
 that span over the whole domain (AE to ZW).
 Therefore, the select query needs to read all the table files. This is visible in the 'number of files read' metric,
 in the Scan Parquet node of the Spark Plan corresponding to such query (Spark UI, SQL/Dataframe tab).
 
-After z-ordering the table, we observe that country codes are well sorted and colocated in the parquet files.
-This colocality is used in the select query, that now only reads 1 file.
-In the query details we observe that a filter push down took place:
+After z-ordering the table, we observe that country codes are well sorted and colocated in the parquet files:
+each file covers a narrow, non-overlapping range of 'country_code' values.
+The select query now only reads 1 file, thanks to Delta data skipping.
 
-PushedFilters: [IsNotNull(country_code), EqualTo(country_code,IT)]
+The filter 'country_code = IT' is used at different moments:
+1. Driver, query planning (Delta data skipping): the filter is checked against the per-file min/max stats stored in
+   the delta log (_delta_log), and files whose range cannot match are skipped. This is what reduces the number of
+   files read, and it only works if file ranges are narrow, which is what z-order provides.
+2. Executors, reading the files (Parquet filter push down): the filter is passed to the Parquet reader, visible as
+   PushedFilters: [IsNotNull(country_code), EqualTo(country_code,IT)]
+   It skips row groups (using the stats in the Parquet file footers) inside the files selected in step 1.
+3. Executors, after the scan: the Filter node re-checks every row, since steps 1 and 2 are best-effort.
+
+Note that PushedFilters are present before z-ordering too: they are not what reduces the number of files read.
 
 # What to aim for concretely
 
-In the execution plan of the query, there should be pushed filters on the column we have done z-order on.
-These filters should reduce the amount of files read metric, visible in the scan parquet node for the query.
+In the scan node of the query (Spark UI, SQL/Dataframe tab), the 'number of files read' metric should be much lower
+than the total number of files in the table (on Databricks, see also 'number of files pruned').
+For this, the filter must be on a column with stats (by default the first 32 columns, see
+delta.dataSkippingNumIndexedCols / delta.dataSkippingStatsColumns), and the files must have narrow ranges on it.
 
 */
 
@@ -128,7 +139,7 @@ selectQuery(inputDir, "NO ZORDER")
 
 // COMMAND ----------
 
-//Exectute the optimize command
+// Execute the optimize command
 spark.sparkContext.setJobDescription("OPTIMIZE with Z-ORDER")
 spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
 DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code") 
@@ -139,7 +150,7 @@ DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code")
 showDf(showMaxMinStats(inputDir, Seq("country_code"), 1, 1))
 selectQuery(inputDir, "ZORDER")
 
-// Check the Spark UI to see the amount of files read for the same select query before and after z-order.
+// Check the Spark UI to see the number of files read for the same select query before and after z-order.
 
 // COMMAND ----------
 
