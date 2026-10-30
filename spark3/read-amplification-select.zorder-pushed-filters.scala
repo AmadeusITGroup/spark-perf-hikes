@@ -44,7 +44,7 @@ These filters should reduce the amount of files read metric, visible in the scan
 
 import java.util.UUID
 import io.delta.tables.DeltaTable
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{DataFrame, SparkSession}
 
 val input = "/tmp/perf-hikes/datasets/optd_por_public_filtered.csv"
 val tmpPath = "/tmp/perf-hikes/sandbox/" + UUID.randomUUID()
@@ -61,27 +61,56 @@ airports.repartition(5).write.format("delta").save(inputDir)
 
 // COMMAND ----------
 
-def showMaxMinStats(tablePath: String, colName: String, commit: Int): Unit = {
-  // stats on parquet files added to the table
+// Max/min stats of the parquet files added or removed by each commit in [fromCommit, toCommit], unioned in one dataframe.
+// Column 'action' is 'add' or 'remove'. Remove actions often carry no stats (nulls): match them by path with earlier adds.
+def showMaxMinStats(tablePath: String, colNames: Seq[String], fromCommit: Int, toCommit: Int): DataFrame = {
   import org.apache.spark.sql.functions._
   import org.apache.spark.sql.types._
+  require(colNames.nonEmpty, "At least one column name is required")
   val statsSchema = new StructType()
-      .add("numRecords", IntegerType, true)
-      .add("minValues", MapType(StringType, StringType), true)
-      .add("maxValues", MapType(StringType, StringType), true)
+    .add("numRecords", LongType, true)
+    .add("minValues", MapType(StringType, StringType), true)
+    .add("maxValues", MapType(StringType, StringType), true)
+  val minCols = colNames.map(c => s"min_$c")
+  val statsCols = colNames.flatMap { c =>
+    Seq(
+      col("stats.minValues").getItem(c).as(s"min_$c"),
+      col("stats.maxValues").getItem(c).as(s"max_$c")
+    )
+  }
+  // One dataframe per (commit, action), only if the commit json has that action (e.g. a pure append has no 'remove')
+  def fileActions(json: DataFrame, commit: Int, action: String): Option[DataFrame] =
+    if (!json.columns.contains(action)) None
+    else {
+      val fields = json.schema(action).dataType.asInstanceOf[StructType]
+      def has(name: String) = fields.fieldNames.contains(name)
+      val hasZCube = has("tags") && fields("tags").dataType.asInstanceOf[StructType].fieldNames.contains("ZCUBE_ID")
+      Some(json
+        .where(col(s"$action.path").isNotNull)
+        .withColumn("stats", from_json(if (has("stats")) col(s"$action.stats") else lit(null).cast(StringType), statsSchema))
+        .select(
+          Seq(
+            lit(commit).as("commit"),
+            lit(action).as("action"),
+            col(s"$action.path").as("path"),
+            (if (hasZCube) col(s"$action.tags.ZCUBE_ID") else lit(null).cast(StringType)).as("zcube_id")
+          ) ++ statsCols ++ Seq(
+            (if (has("tags")) to_json(col(s"$action.tags")) else lit(null).cast(StringType)).as("tags")
+          ): _*
+        ))
+    }
+  spark.sparkContext.setJobDescription(s"Display max/min stats for files added/removed in delta table (commits ${fromCommit} to ${toCommit})")
+  val perCommit = (fromCommit to toCommit).flatMap { commit =>
+    val json = spark.read.json(f"$tablePath/_delta_log/$commit%020d.json")
+    Seq("add", "remove").flatMap(action => fileActions(json, commit, action))
+  }
+  require(perCommit.nonEmpty, s"No files added or removed between commits $fromCommit and $toCommit")
+  perCommit.reduce(_ unionByName _).orderBy((Seq("commit", "action") ++ minCols :+ "path").map(col): _*)
+}
 
-  val df = spark.read.json(s"$tablePath/_delta_log/*${commit}.json")
-    .withColumn("commit_json_name", input_file_name())
-    .withColumn("add_stats", from_json(col("add.stats"), statsSchema))
-    .withColumn(s"add_stats_min_col_${colName}", col(s"add_stats.minValues.$colName"))
-    .withColumn(s"add_stats_max_col_${colName}", col(s"add_stats.maxValues.$colName"))
-    .withColumn("add_size", col("add.size"))
-    .withColumn("add_path", col("add.path"))
-    .where(col("add_path").isNotNull)
-    .select("add_path", s"add_stats_min_col_${colName}", s"add_stats_max_col_${colName}")
-    .orderBy(s"add_stats_min_col_${colName}", "add_path")
-  spark.sparkContext.setJobDescription(s"Display max/min stats for files present in delta table (commit ${commit})")
-  df.show(false)
+def showDf(df: DataFrame): Unit = {
+  display(df) // Databricks
+  // df.show(100, false) // local
 }
 
 def selectQuery(tablePath: String, tag: String): Unit = {
@@ -94,7 +123,7 @@ def selectQuery(tablePath: String, tag: String): Unit = {
 // COMMAND ----------
 
 // show that files have data that is not well organized (ranges max/min values overlap for different files)
-showMaxMinStats(inputDir, "country_code", 0)
+showDf(showMaxMinStats(inputDir, Seq("country_code"), 0, 0))
 selectQuery(inputDir, "NO ZORDER")
 
 // COMMAND ----------
@@ -107,7 +136,46 @@ DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code")
 // COMMAND ----------
 
 // show that files have data that is well organized now
-showMaxMinStats(inputDir, "country_code", 1)
+showDf(showMaxMinStats(inputDir, Seq("country_code"), 1, 1))
 selectQuery(inputDir, "ZORDER")
 
 // Check the Spark UI to see the amount of files read for the same select query before and after z-order.
+
+// COMMAND ----------
+
+/*
+# Appendix: is Z-order incremental?
+*/
+
+// COMMAND ----------
+
+// Incremental Z-order (Databricks runtime only): files z-ordered together in one OPTIMIZE share a ZCUBE_ID (see zcube_id).
+// A later OPTIMIZE ZORDER BY on the same columns:
+// - keeps cubes at or above the min cube size threshold untouched, and z-orders only the new files into a new cube
+// - merges cubes below the threshold ("partial" cubes) with the new files, and rewrites them all into one new cube
+// The threshold conf is internal and not in the Databricks docs. Default ~100GB, so on this small table the commit 1
+// cube is partial and gets fully rewritten. We lower it to keep the commit 1 cube.
+// The name differs from OSS: OSS has 'optimize.clustering.mergeStrategy.minCubeSize.threshold', used by liquid
+// clustering only (OSS ZORDER always rewrites the whole partition); setting that one has no effect on Databricks ZORDER.
+// NOTE: spark.conf.set is session-scoped: start a new session to rerun without it.
+spark.conf.set("spark.databricks.delta.optimize.zorder.mergeStrategy.minCubeSize.threshold", 10 * 1024L)
+
+// Append new data (commit 2): its country_code values span the whole domain again
+spark.sparkContext.setJobDescription("Append new data (not z-ordered)")
+airports.sample(0.2, 42).repartition(2).write.format("delta").mode("append").save(inputDir)
+
+// Z-order again (commit 3)
+spark.sparkContext.setJobDescription("OPTIMIZE with Z-ORDER (incremental)")
+DeltaTable.forPath(inputDir).optimize().executeZOrderBy("country_code")
+
+// COMMAND ----------
+
+// Look at the 'remove' rows of commit 3:
+// - incremental (Databricks): only commit 2 files are removed, the commit 1 cube survives, new files get a new zcube_id
+// - not incremental (OSS): commit 1 and 2 files are all removed and re-added under one new zcube_id
+//   (also what Databricks does without the threshold conf above, since the commit 1 cube is partial)
+showDf(showMaxMinStats(inputDir, Seq("country_code"), 1, 3))
+
+// If incremental, the two cubes overlap on country_code: expect ~1 file read per cube (see "number of files read").
+// Each new cube adds overlap: read amplification grows until cubes are merged / rewritten.
+selectQuery(inputDir, "INCREMENTAL ZORDER")
