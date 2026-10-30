@@ -6,3 +6,7 @@ build.sbt
 .idea
 tmp/
 target/
+.bloop/
+.metals/
+.vscode/
+.scala-build/
