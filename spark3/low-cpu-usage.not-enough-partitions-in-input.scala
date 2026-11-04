@@ -95,7 +95,9 @@ Range(1,100).map(r => airports.withColumn("idx", lit(r))).reduce(_.union(_)).rep
 
 // COMMAND ----------
 
-val expensiveProcessing = "sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(sha(wiki_link))))))))))))))))))))))"
+// Nested regexp_replace: each call replaces every letter with itself, so the string stays the same
+val nbReplaces = 10
+val expensiveProcessing = (1 to nbReplaces).foldLeft("wiki_link")((e, _) => "regexp_replace(" + e + ", '([a-z])', '$1')")
 
 // COMMAND ----------
 
