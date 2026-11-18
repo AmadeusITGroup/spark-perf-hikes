@@ -1,33 +1,30 @@
 // Databricks notebook source
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.3.1 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
-// Databricks: ...
+// Databricks: 17.3 LTS
 
 // COMMAND ----------
 
 /*
 This example shows how to address the read amplification problem in case of select queries on a delta table,
-using a data skipping friendly data layout obtained enabling liquid clustering on the table.
+using a data skipping friendly data layout obtained when enabling liquid clustering on the table.
 
 References:
 - https://docs.delta.io/latest/delta-clustering.html
 
 # Symptom
-You are running a select query on a delta table and you are reading way more data than actually needed,
-since your result-set is really small.
+You are running a select query on a delta table and it takes longer than expected. You notice you are reading way more data than your result-set.
 
 # Explanation
-In this example we create a delta table composed by 5 parquet files, and we run a select query, filtering
-on the 'country_code' column, before and after having enabled liquid clustering on such column.
+In this example we create a delta table composed by few parquet files, and we run a select query filtering on a specific column, before and after having enabled liquid clustering on such column.
 
 Before clustering the table, we observe that each parquet file contains values of the 'country_code'
 that span over the whole domain (AE to ZW).
 Therefore, the select query needs to read all the table files. This is visible in the 'number of files read' metric,
 in the Scan Parquet node of the Spark Plan corresponding to such query (Spark UI, SQL/Dataframe tab).
 
-We then enable liquid clustering (ALTER TABLE ... CLUSTER BY (country_code)) and run OPTIMIZE, which rewrites
-the files so that country codes are colocated. The min/max ranges of the files no longer overlap (except at boundaries), and data skipping
-lets the select query read only 1 file. The table still has 5 files: the gain comes from the layout, not compaction.
+We then enable liquid clustering and run OPTIMIZE, the min/max ranges of the files no longer overlap (except at boundaries), and data skipping
+lets the select query read less data.
 In the query details we observe that a filter push down took place:
 PushedFilters: [IsNotNull(country_code), EqualTo(country_code,IT)]
 
@@ -39,10 +36,6 @@ or too low cardinality columns. Liquid clustering is not compatible with partiti
 # What to aim for concretely
 In the execution plan of the query, there should be pushed filters on the clustering column.
 These filters should reduce the 'number of files read' metric in the scan parquet node for the query (5 -> 1).
-
-============
-TODO CHECK THIS SECTION
-============
 */
 
 // COMMAND ----------
@@ -122,7 +115,8 @@ def showMaxMinStats(tablePath: String, colNames: Seq[String], fromCommit: Int, t
             lit(commit).as("commit"),
             col("add.path").as("add_path")
           ) ++ statsCols ++ Seq(            
-            to_json(col("add.tags")).as("add_tags")
+            // 'tags' is absent from the log of a table not (yet) clustered
+            (if (json.select("add.*").columns.contains("tags")) to_json(col("add.tags")) else lit(null).cast("string")).as("add_tags")
           ): _*
         )
     }
@@ -159,7 +153,8 @@ display(spark.sql(s"DESCRIBE HISTORY delta.`$inputDirWithLc`"))
 // COMMAND ----------
 
 
-display(showMaxMinStats(inputDirWithLc, Seq("country_code", "iata_code"), 0, 5))
+val lastVersion = DeltaTable.forPath(inputDirWithLc).history(1).head.getAs[Long]("version").toInt
+display(showMaxMinStats(inputDirWithLc, Seq("country_code", "iata_code"), 0, lastVersion))
 
 // COMMAND ----------
 
