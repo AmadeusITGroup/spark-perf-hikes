@@ -23,8 +23,10 @@ that span over the whole domain (AE to ZW).
 Therefore, the select query needs to read all the table files. This is visible in the 'number of files read' metric,
 in the Scan Parquet node of the Spark Plan corresponding to such query (Spark UI, SQL/Dataframe tab).
 
-We then enable liquid clustering and run OPTIMIZE, the min/max ranges of the files no longer overlap (except at boundaries), and data skipping
-lets the select query read less data.
+We then enable liquid clustering with the clustering keys (iata_code, country_code), in this order, and run OPTIMIZE.
+The files are rewritten so that rows with close key values are colocated, with the first key (iata_code) weighing the most:
+its min/max ranges become narrow and mostly non-overlapping, while the ones of the second key (country_code) are only narrower
+than before, and still overlap partially. Data skipping then lets the select query read fewer files.
 In the query details we observe that a filter push down took place:
 PushedFilters: [IsNotNull(country_code), EqualTo(country_code,IT)]
 
@@ -35,7 +37,9 @@ or too low cardinality columns. Liquid clustering is not compatible with partiti
 
 # What to aim for concretely
 In the execution plan of the query, there should be pushed filters on the clustering column.
-These filters should reduce the 'number of files read' metric in the scan parquet node for the query (5 -> 1).
+These filters should reduce the 'number of files read' metric in the scan parquet node for the query (5 -> 2 in a local run).
+With clustering keys (iata_code, country_code) the query, which filters on both, does not reach 1 file: the files still
+overlap on country_code, the second key. Clustering on country_code alone would give narrower ranges on it.
 */
 
 // COMMAND ----------
@@ -162,3 +166,45 @@ display(showMaxMinStats(inputDirWithLc, Seq("country_code", "iata_code"), 0, las
 selectQuery(inputDirWithLc, "LIQUID CLUSTERING")
 
 // Check the Spark UI to see the amount of files read for the same select query before and after liquid clustering.
+
+// COMMAND ----------
+
+// MAGIC %md
+// MAGIC ## Appendix: is liquid clustering incremental?
+
+// COMMAND ----------
+
+// Files clustered together in one OPTIMIZE share a ZCUBE_ID (see add_tags). A later OPTIMIZE on the same table:
+// - leaves cubes at or above the min cube size threshold untouched, and clusters only the new files into a new cube
+// - merges cubes below the threshold ("partial" cubes) with the new files, and rewrites them all into one new cube
+// The threshold conf is internal. Default 100 x optimize.maxFileSize (100GB), so on this small table the commit 2
+// cube is partial and gets fully rewritten. We lower it to keep the commit 2 cube.
+// NOTE: spark.conf.set is session-scoped: start a new session to rerun without it.
+spark.conf.set("spark.databricks.delta.optimize.clustering.mergeStrategy.minCubeSize.threshold", 10 * 1024L)
+
+// Append new data (commit 3): its country_code values span the whole domain again
+spark.sparkContext.setJobDescription("Append new data (not clustered)")
+airports.sample(0.2, 42).repartition(2).write.format("delta").mode("append").save(inputDirWithLc)
+
+// Cluster again (commit 4)
+spark.sparkContext.setJobDescription("OPTIMIZE (liquid clustering, incremental)")
+spark.sql(s"OPTIMIZE delta.`$inputDirWithLc`")
+
+// COMMAND ----------
+
+// Look at the files added in commits 2 to 4, and at numRemovedFiles / numAddedFiles of commit 4:
+// - incremental: only the commit 3 files are removed, the commit 2 cube survives, new files get a new ZCUBE_ID
+// - not incremental: commit 2 and 3 files are all removed and re-added under one new ZCUBE_ID
+//   (what happens without the threshold conf above, since the commit 2 cube is partial)
+display(showMaxMinStats(inputDirWithLc, Seq("country_code", "iata_code"), 2, 4))
+
+// COMMAND ----------
+
+spark.sparkContext.setJobDescription("DESCRIBE HISTORY (incremental OPTIMIZE)")
+display(spark.sql(s"DESCRIBE HISTORY delta.`$inputDirWithLc`").select("version", "operation", "operationMetrics"))
+
+// COMMAND ----------
+
+// If incremental, the two cubes overlap: the select query reads files of both cubes (see "number of files read").
+// Each new cube adds overlap: read amplification grows until cubes are merged, or OPTIMIZE FULL re-clusters everything.
+selectQuery(inputDirWithLc, "INCREMENTAL LIQUID CLUSTERING")
