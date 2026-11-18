@@ -1,7 +1,7 @@
 // Databricks notebook source
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
-// Databricks: ...
+// Databricks: 17.3LTS
 
 // COMMAND ----------
 
@@ -37,7 +37,7 @@ Concretely, the goal is to have operationMetrics in the history() such that the 
 - numSourceRows (number of batch rows that are intended to be used for the merge)
 - numOuputRows (number of rows physically written in the table on the merge)
 should have similar values.
-Mind that while this goal generally improves the producer performance, it leaves to the consumer the resolution of
+Mind that while Deletion Vectors generally improve the producer performance, they leave to the consumer the resolution of
 the soft-deleted records with some performance cost. 
 */
 
@@ -171,6 +171,15 @@ display(DeltaTable.forPath(deltaWithoutDvDir).toDF)
 // COMMAND ----------
 
 display(DeltaTable.forPath(deltaWithoutDvDir).history)
+
+// COMMAND ----------
+
+// minReaderVersion gets updated when using deletion vectors
+display(
+  DeltaTable.forPath(deltaWithoutDvDir).detail.withColumn("table", lit("without DV"))
+    .unionByName(DeltaTable.forPath(deltaWithDvDir).detail.withColumn("table", lit("with DV")))
+    .select("table", "minReaderVersion", "minWriterVersion", "tableFeatures")
+)
 
 // COMMAND ----------
 
