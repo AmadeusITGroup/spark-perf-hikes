@@ -188,10 +188,11 @@ selectQuery(inputDirWithLc, "LIQUID CLUSTERING")
 spark.conf.set("spark.databricks.delta.optimize.clustering.mergeStrategy.minCubeSize.threshold", 10 * 1024L)
 
 // Append new data: its country_code values span the whole domain again.
-// We append the whole dataset: on Databricks, OPTIMIZE skips the unclustered files altogether when they amount to
-// too little data (no commit at all, measured between 374KB and 421KB on DBR 17.3), which would hide the effect.
+// We append 4 copies of the dataset (about 2MB): on Databricks, OPTIMIZE skips the unclustered files altogether when
+// they amount to too little data, and commits nothing at all (cutoff measured between 374KB and 421KB on DBR 17.3),
+// which would hide the effect we want to show here.
 spark.sparkContext.setJobDescription("Append new data (not clustered)")
-airports.repartition(2).write.format("delta").mode("append").save(inputDirWithLc)
+Seq.fill(4)(airports).reduce(_ union _).repartition(2).write.format("delta").mode("append").save(inputDirWithLc)
 val appendDataVersion = latestVersion(inputDirWithLc)
 
 // Cluster again
