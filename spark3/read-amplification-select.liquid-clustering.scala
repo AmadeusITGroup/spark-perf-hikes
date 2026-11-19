@@ -23,10 +23,10 @@ that span over the whole domain (AE to ZW).
 Therefore, the select query needs to read all the table files. This is visible in the 'number of files read' metric,
 in the Scan Parquet node of the Spark Plan corresponding to such query (Spark UI, SQL/Dataframe tab).
 
-We then enable liquid clustering with the clustering keys (iata_code, country_code), in this order, and run OPTIMIZE.
-The files are rewritten so that rows with close key values are colocated, with the first key (iata_code) weighing the most:
-its min/max ranges become narrow and mostly non-overlapping, while the ones of the second key (country_code) are only narrower
-than before, and still overlap partially. Data skipping then lets the select query read fewer files.
+We then enable liquid clustering with the clustering keys (iata_code, country_code) and run OPTIMIZE.
+The files are rewritten so that rows with close values on all the keys together are colocated (Hilbert curve).
+The min/max ranges of each key become narrower than before, but they can still overlap, since the layout is shared by
+all the keys. Data skipping then lets the select query read fewer files.
 In the query details we observe that a filter push down took place:
 PushedFilters: [IsNotNull(country_code), EqualTo(country_code,IT)]
 
@@ -39,7 +39,7 @@ or too low cardinality columns. Liquid clustering is not compatible with partiti
 In the execution plan of the query, there should be pushed filters on the clustering column.
 These filters should reduce the 'number of files read' metric in the scan parquet node for the query (5 -> 2 in a local run).
 With clustering keys (iata_code, country_code) the query, which filters on both, does not reach 1 file: the files still
-overlap on country_code, the second key. Clustering on country_code alone would give narrower ranges on it.
+overlap on the keys, since the layout is shared by both of them.
 */
 
 // COMMAND ----------
