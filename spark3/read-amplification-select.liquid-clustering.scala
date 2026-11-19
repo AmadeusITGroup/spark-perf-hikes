@@ -177,18 +177,21 @@ selectQuery(inputDirWithLc, "LIQUID CLUSTERING")
 
 // COMMAND ----------
 
-// Files clustered together in one OPTIMIZE are tagged as belonging to the same cube (see add_tags: ZCUBE_ID in
+// OPTIMIZE groups the files it clusters together into a cube, and tags them with it (see add_tags: ZCUBE_ID in
 // Delta OSS, LIQUID_METADATA_ID on Databricks). A later OPTIMIZE on the same table:
 // - leaves cubes at or above the min cube size threshold untouched, and clusters only the new files into a new cube
 // - merges cubes below the threshold ("partial" cubes) with the new files, and rewrites them all into one new cube
-// The threshold conf is internal. Default 100 x optimize.maxFileSize (100GB), so on this small table the cube
-// created by the first OPTIMIZE is partial and gets fully rewritten. We lower it to keep that cube.
+// The threshold conf below is internal to Delta OSS, where its default (100 x optimize.maxFileSize) makes the cube
+// of the first OPTIMIZE partial, so it would be fully rewritten. We lower it to keep that cube. On Databricks the
+// conf has no effect: OPTIMIZE already leaves the already clustered files alone.
 // NOTE: spark.conf.set is session-scoped: start a new session to rerun without it.
 spark.conf.set("spark.databricks.delta.optimize.clustering.mergeStrategy.minCubeSize.threshold", 10 * 1024L)
 
-// Append new data: its country_code values span the whole domain again
+// Append new data: its country_code values span the whole domain again.
+// We append the whole dataset: on Databricks, OPTIMIZE skips the unclustered files altogether when they amount to
+// too little data (no commit at all, measured between 374KB and 421KB on DBR 17.3), which would hide the effect.
 spark.sparkContext.setJobDescription("Append new data (not clustered)")
-airports.sample(0.2, 42).repartition(2).write.format("delta").mode("append").save(inputDirWithLc)
+airports.repartition(2).write.format("delta").mode("append").save(inputDirWithLc)
 val appendDataVersion = latestVersion(inputDirWithLc)
 
 // Cluster again
@@ -199,9 +202,12 @@ val incrementalVersion = latestVersion(inputDirWithLc)
 // COMMAND ----------
 
 // Look at the files added since the first clustering, and at numRemovedFiles / numAddedFiles of the last OPTIMIZE:
-// - incremental: only the appended files are removed, the first cube survives, new files get a new cube tag
-// - not incremental: the first cube files and the appended files are all removed and re-added under one new cube tag
-//   (what happens without the threshold conf above, since the first cube is partial)
+// - incremental: only the appended files are removed, the files of the first cube survive
+// - not incremental: the first cube files and the appended files are all removed and re-added, all clustered together
+//   (what happens in Delta OSS without the threshold conf above, since the first cube is partial)
+// The appended files carry no cube tag, the clustered ones do. In Delta OSS each cube has its own ZCUBE_ID, so a new
+// cube is visible as a new id; on Databricks LIQUID_METADATA_ID is the same for the whole table, so it only tells
+// clustered files from unclustered ones.
 display(showMaxMinStats(inputDirWithLc, Seq("country_code", "iata_code"), clusteredVersion, incrementalVersion))
 
 // COMMAND ----------
