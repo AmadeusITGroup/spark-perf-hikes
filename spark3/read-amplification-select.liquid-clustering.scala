@@ -80,7 +80,7 @@ spark.conf.set("spark.databricks.delta.optimize.maxFileSize", 100 * 1024L)
 spark.sql(s"OPTIMIZE delta.`$inputDirWithLc`")
 
 // Delta version of the table once clustered (commit numbers differ between OSS and Databricks, so we do not hardcode them)
-def latestVersion(tablePath: String): Int = DeltaTable.forPath(tablePath).history(1).head.getAs[Long]("version").toInt
+def latestVersion(tablePath: String): Int = DeltaTable.forPath(tablePath).history(1).head().getAs[Long]("version").toInt
 val clusteredVersion = latestVersion(inputDirWithLc)
 
 // COMMAND ----------
@@ -177,7 +177,8 @@ selectQuery(inputDirWithLc, "LIQUID CLUSTERING")
 
 // COMMAND ----------
 
-// Files clustered together in one OPTIMIZE share a ZCUBE_ID (see add_tags). A later OPTIMIZE on the same table:
+// Files clustered together in one OPTIMIZE are tagged as belonging to the same cube (see add_tags: ZCUBE_ID in
+// Delta OSS, LIQUID_METADATA_ID on Databricks). A later OPTIMIZE on the same table:
 // - leaves cubes at or above the min cube size threshold untouched, and clusters only the new files into a new cube
 // - merges cubes below the threshold ("partial" cubes) with the new files, and rewrites them all into one new cube
 // The threshold conf is internal. Default 100 x optimize.maxFileSize (100GB), so on this small table the cube
@@ -188,6 +189,7 @@ spark.conf.set("spark.databricks.delta.optimize.clustering.mergeStrategy.minCube
 // Append new data: its country_code values span the whole domain again
 spark.sparkContext.setJobDescription("Append new data (not clustered)")
 airports.sample(0.2, 42).repartition(2).write.format("delta").mode("append").save(inputDirWithLc)
+val appendDataVersion = latestVersion(inputDirWithLc)
 
 // Cluster again
 spark.sparkContext.setJobDescription("OPTIMIZE (liquid clustering, incremental)")
@@ -197,8 +199,8 @@ val incrementalVersion = latestVersion(inputDirWithLc)
 // COMMAND ----------
 
 // Look at the files added since the first clustering, and at numRemovedFiles / numAddedFiles of the last OPTIMIZE:
-// - incremental: only the appended files are removed, the first cube survives, new files get a new ZCUBE_ID
-// - not incremental: the first cube files and the appended files are all removed and re-added under one new ZCUBE_ID
+// - incremental: only the appended files are removed, the first cube survives, new files get a new cube tag
+// - not incremental: the first cube files and the appended files are all removed and re-added under one new cube tag
 //   (what happens without the threshold conf above, since the first cube is partial)
 display(showMaxMinStats(inputDirWithLc, Seq("country_code", "iata_code"), clusteredVersion, incrementalVersion))
 
