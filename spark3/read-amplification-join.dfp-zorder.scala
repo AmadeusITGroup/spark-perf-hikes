@@ -68,6 +68,7 @@ metric 'number of files read' should be small compared with the 'number of files
 
 // COMMAND ----------
 
+// DBTITLE 1,Setup
 import java.util.UUID
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.col
@@ -84,7 +85,7 @@ import spark.implicits._
 
 // COMMAND ----------
 
-// Probe side
+// DBTITLE 1,Probe table (z-ordered on the join key)
 spark.sparkContext.setJobDescription("Create probe table")
 val airports = spark.read.option("delimiter","^").option("header","true").csv(input)
 airports.write.mode("overwrite").format("delta").save(probeDir)
@@ -96,11 +97,14 @@ DeltaTable.forPath(probeDir).optimize().executeZOrderBy("country_code")
 
 // COMMAND ----------
 
+// DBTITLE 1,Probe table: number of files
 // Note the total number of files after z-ordering (it may vary with the runtime version)
+spark.sparkContext.setJobDescription("Display number of files in probe table after z-order")
 DeltaTable.forPath(probeDir).detail().selectExpr("numFiles as total_number_of_files_after_zorder").show()
 
 // COMMAND ----------
 
+// DBTITLE 1,Probe table: min/max stats per file
 def getMaxMinStats(tablePath: String, colName: String, commit: Int): DataFrame = {
   // min/max stats of the parquet files added to the table by the given commit
   import org.apache.spark.sql.functions._
@@ -129,7 +133,7 @@ stats.where(col("min_country_code") <= "FR" && col("max_country_code") >= "FR")
 
 // COMMAND ----------
 
-// Build side
+// DBTITLE 1,Build table
 case class Employee(name: String, role: String, residence: String)
 val employeesData = Seq(
   Employee("Thierry", "Software Engineer", "FR"),
@@ -145,10 +149,11 @@ val employeesData = Seq(
   Employee("Thomas", "Intern", "FR")
 )
 spark.sparkContext.setJobDescription("Create build table")
-employeesData.toDF.write.mode("overwrite").format("delta").save(buildDir)
+employeesData.toDF().write.mode("overwrite").format("delta").save(buildDir)
 
 // COMMAND ----------
 
+// DBTITLE 1,Join helpers
 // Join 2 tables (probe and build), adding a filter in the smaller one (the build side of the join)
 def joinTables(description: String): Unit = {
   val probe = DeltaTable.forPath(probeDir).toDF
@@ -159,32 +164,6 @@ def joinTables(description: String): Unit = {
   .where(col("role") === "Intern")
   .count()
 }
-
-// First scenario: DFP is not activated
-spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "false")
-joinTables("NO DFP")
-
-// Be sure to have the conditions to trigger DFP: DFP enabled, broadcast join, table/files thresholds
-spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
-// The build table is tiny, so the join is already a broadcast join with the default
-// autoBroadcastJoinThreshold (10MB). In general, check in the plan that the join is a broadcast join,
-// and if needed raise the threshold, e.g.:
-// spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 100 * 1024 * 1024L)
-// Lower the thresholds (defaults: 10GB and 10 files): our probe table is much smaller than that.
-spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
-spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
-
-// Second scenario: DFP activated and preconditions are met
-joinTables("DFP")
-
-// Go to the Databricks Spark UI, look for the SQL query corresponding to the joins (i.e. 
-// "Join tables: DFP" and "Join tables: NO DFP"), and compare the 'number of files read' 
-// and 'number of files pruned' metrics in the big table 'Scan parquet' node of both queries.
-// You can also get the total amount of files of a delta table with 'describe detail'.
-// NOTE: The sum of 'number of files read' and 'number of files pruned' should give the total 
-// amount of files in the table as per its last version.
-
-// COMMAND ----------
 
 // Join 2 tables (probe and build), without adding a filter in the smaller one (the build side of the join)
 def joinTablesNoFilter(description: String): Unit = {
@@ -197,8 +176,40 @@ def joinTablesNoFilter(description: String): Unit = {
   .count()
 }
 
-// Third scenario: DFP activated but no filter in the build side
-joinTablesNoFilter("DFP-no-filter")
+// COMMAND ----------
+
+// DBTITLE 1,Scenario 1: DFP disabled
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "false")
+joinTables("DFP disabled")
+
+// COMMAND ----------
+
+// DBTITLE 1,Scenario 2: DFP enabled - with filter
+// Be sure to have the conditions to trigger DFP: DFP enabled, broadcast join, table/files thresholds
+spark.conf.set("spark.databricks.optimizer.dynamicFilePruning", "true")
+// DFP needs a broadcast join: default 10MB is enough here, consider raising it if the build side is bigger
+spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 10 * 1024 * 1024L)
+// Lower the thresholds (defaults: 10GB and 10 files): our probe table is much smaller than that.
+spark.conf.set("spark.databricks.optimizer.deltaTableSizeThreshold", 1)
+spark.conf.set("spark.databricks.optimizer.deltaTableFilesThreshold", 1)
+
+// DFP activated and preconditions are met
+joinTables("DFP enabled - with filter")
+
+// Go to the Databricks Spark UI, look for the SQL query corresponding to the joins (i.e. 
+// "Join tables: DFP disabled" and "Join tables: DFP enabled - with filter"), and compare the
+// 'number of files read' and 'number of files pruned' metrics in the big table 'Scan parquet' node
+// of both queries.
+// You can also get the total amount of files of a delta table with 'describe detail'.
+// NOTE: The sum of 'number of files read' and 'number of files pruned' should give the total 
+// amount of files in the table as per its last version.
+// Consider also 'rows output' and 'size of files read' metrics.
+
+// COMMAND ----------
+
+// DBTITLE 1,Scenario 3: DFP enabled - no filter
+// Same DFP settings as scenario 2 (run it first), but no filter in the build side
+joinTablesNoFilter("DFP enabled - no filter")
 
 // Now do the same checks as above for the join without filter.
 // This time DFP does not kick in, so we get the same results as in the first scenario, without DFP.
