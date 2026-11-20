@@ -1,6 +1,6 @@
 // Databricks notebook source
 // Spark: 3.5.1
-// Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.3.1 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+// Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.3.1 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog --conf spark.driver.host=127.0.0.1 --conf spark.driver.bindAddress=127.0.0.1
 // Databricks: 17.3 LTS
 
 // COMMAND ----------
@@ -93,7 +93,7 @@ def selectQuery(tablePath: String, tag: String): Unit = {
 
 // COMMAND ----------
 
-// Max/min stats of the parquet files added by each commit in [fromCommit, toCommit], unioned in one dataframe
+// Size (bytes) and max/min stats of the parquet files added by each commit in [fromCommit, toCommit], unioned in one dataframe
 import org.apache.spark.sql.DataFrame
 def showMaxMinStats(tablePath: String, colNames: Seq[String], fromCommit: Int, toCommit: Int): DataFrame = {
   import org.apache.spark.sql.functions._
@@ -121,7 +121,8 @@ def showMaxMinStats(tablePath: String, colNames: Seq[String], fromCommit: Int, t
         .select(
           Seq(
             lit(commit).as("commit"),
-            col("add.path").as("add_path")
+            col("add.path").as("add_path"),
+            col("add.size").as("add_size")
           ) ++ statsCols ++ Seq(            
             // 'tags' is absent from the log of a table not (yet) clustered
             (if (json.select("add.*").columns.contains("tags")) to_json(col("add.tags")) else lit(null).cast("string")).as("add_tags")
@@ -137,7 +138,7 @@ def showMaxMinStats(tablePath: String, colNames: Seq[String], fromCommit: Int, t
 // COMMAND ----------
 
 // uncomment if display is unavailable
-def display(df: DataFrame) = df.show(false)
+// def display(df: DataFrame) = df.show(10000, false)
 
 // COMMAND ----------
 
@@ -189,6 +190,8 @@ selectQuery(inputDirWithLc, "LIQUID CLUSTERING")
 spark.conf.set("spark.databricks.delta.optimize.clustering.mergeStrategy.minCubeSize.threshold", 10 * 1024L)
 
 // Append new data: its country_code values span the whole domain again.
+// The appended files carry no cube tag, the clustered ones do. In Delta OSS each cube has its own ZCUBE_ID, so a new
+// cube is visible as a new id.
 spark.sparkContext.setJobDescription("Append new data (not clustered)")
 Seq.fill(4)(airports).reduce(_ union _).repartition(2).write.format("delta").mode("append").save(inputDirWithLc)
 val appendDataVersion = latestVersion(inputDirWithLc)
@@ -201,12 +204,12 @@ val incrementalVersion = latestVersion(inputDirWithLc)
 // COMMAND ----------
 
 // Look at the files added since the first clustering, and at numRemovedFiles / numAddedFiles of the last OPTIMIZE.
-// It is incremental: only the appended files are removed, the files of the first cube survive, new files created
-// The appended files carry no cube tag, the clustered ones do. In Delta OSS each cube has its own ZCUBE_ID, so a new
-// cube is visible as a new id.
+// It is incremental: only the appended files (2) are removed on the last OPTIMIZE and rewritten as new files. The files 
+// of the first cube survive.
 display(showMaxMinStats(inputDirWithLc, Seq("country_code", "iata_code"), clusteredVersion, incrementalVersion))
 
 // COMMAND ----------
 
 spark.sparkContext.setJobDescription("DESCRIBE HISTORY (incremental OPTIMIZE)")
 display(spark.sql(s"DESCRIBE HISTORY delta.`$inputDirWithLc`").where(s"version > $clusteredVersion").select("version", "operation", "operationMetrics"))
+
