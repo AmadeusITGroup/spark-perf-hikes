@@ -28,7 +28,7 @@ Therefore, the select query needs to read all the table files. This is visible i
 in the Scan Parquet node of the Spark Plan corresponding to such query (Spark UI, SQL/Dataframe tab).
 
 After z-ordering the table, we observe that country codes are well sorted and colocated in the parquet files:
-each file covers a narrow, non-overlapping range of 'country_code' values.
+each file covers a narrow range of 'country_code' values.
 The select query now only reads 1 file, thanks to Delta data skipping.
 
 The filter 'country_code = IT' is used at different moments:
