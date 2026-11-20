@@ -37,6 +37,8 @@ Concretely, the goal is to have operationMetrics in the history() such that the 
 - numSourceRows (number of batch rows that are intended to be used for the merge)
 - numOuputRows (number of rows physically written in the table on the merge)
 should have similar values.
+Note on the bytes-based metrics: numTargetBytesAdded represents the full data written on disk, i.e. compressed data
+plus headers. It is not the in-memory (uncompressed) size of the rows written.
 Mind that while Deletion Vectors generally improve the producer performance, they leave to the consumer the resolution of
 the soft-deleted records with some performance cost. 
 */
