@@ -1,7 +1,7 @@
 // Databricks notebook source
 // Spark: 3.5.1
 // Local: --driver-memory 1G --master 'local[2]' --packages io.delta:delta-spark_2.12:3.1.0 --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
-// Databricks: ...
+// Databricks: 17.3 LTS
 
 // COMMAND ----------
 
@@ -74,7 +74,7 @@ airports.repartition(5).write.format("delta").save(inputDir)
 // COMMAND ----------
 
 // Max/min stats of the parquet files added or removed by each commit in [fromCommit, toCommit], unioned in one dataframe.
-// Column 'action' is 'add' or 'remove'. Remove actions often carry no stats (nulls): match them by path with earlier adds.
+// Column 'action' is 'add' or 'remove'.
 def showMaxMinStats(tablePath: String, colNames: Seq[String], fromCommit: Int, toCommit: Int): DataFrame = {
   import org.apache.spark.sql.functions._
   import org.apache.spark.sql.types._
@@ -140,7 +140,6 @@ showDf(showMaxMinStats(inputDir, Seq("country_code"), 0, 0))
 
 // COMMAND ----------
 
-// Separate cell: display runs its query when the cell ends, so it would get this cell's job description
 selectQuery(inputDir, "NO ZORDER")
 
 // COMMAND ----------
