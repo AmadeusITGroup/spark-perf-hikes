@@ -136,6 +136,11 @@ def showMaxMinStats(tablePath: String, colNames: Seq[String], fromCommit: Int, t
 
 // COMMAND ----------
 
+// uncomment if display is unavailable
+def display(df: DataFrame) = df.show(false)
+
+// COMMAND ----------
+
 // MAGIC %md 
 // MAGIC ## No liquid clustering
 
